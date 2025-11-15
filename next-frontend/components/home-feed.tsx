@@ -4,6 +4,7 @@ import { useSuits } from "../hooks/useSuits";
 import { SuitCard } from "./suit-card";
 import { FeedVertical } from "./feed-vertical";
 import { ReplyModal } from "./reply-modal";
+import { truncateAddress } from "@/lib/utils";
 
 interface Suit {
   id: string;
@@ -203,8 +204,8 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
 
           return {
             id: suit.objectId,
-            author: fields.creator || "Unknown",
-            handle: fields.creator?.slice(0, 8) || "unknown",
+            author: truncateAddress(fields.creator || "Unknown"),
+            handle: truncateAddress(fields.creator || "unknown", 4, 4),
             avatar: fields.creator?.slice(-2).toUpperCase() || "??",
             content: fields.content || "",
             timestamp: parseInt(fields.created_at) || Date.now(),
@@ -231,7 +232,14 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
       setOnChainSuits(transformed);
     };
 
-    loadSuits();
+    const intervalId = setInterval(() => {
+      loadSuits();
+    }, 2000);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
+
+    // loadSuits();
   }, [fetchSuits]);
 
   // Get current suits based on active tab
