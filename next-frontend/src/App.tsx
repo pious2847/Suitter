@@ -14,14 +14,9 @@ import { AppProvider } from "@/components/providers/AppProvider";
 
 function App() {
   return (
-    <ThemeProvider>
-      <AppProvider>
-        <BrowserRouter
-          future={{
-            v7_startTransition: true,
-            v7_relativeSplatPath: true,
-          }}
-        >
+    <AppProvider>
+      <ThemeProvider>
+        <BrowserRouter>
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<HomePage />} />
@@ -36,8 +31,8 @@ function App() {
             </Route>
           </Routes>
         </BrowserRouter>
-      </AppProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </AppProvider>
   );
 }
 

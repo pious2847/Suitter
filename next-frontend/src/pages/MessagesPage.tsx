@@ -79,8 +79,6 @@ function MessagesPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <NavHeader />
-
       <main className="flex-1 overflow-hidden">
         <div className="h-full flex">
           {/* Chat List */}
