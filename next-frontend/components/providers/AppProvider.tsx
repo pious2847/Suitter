@@ -4,6 +4,8 @@ import {
   createNetworkConfig,
 } from "@mysten/dapp-kit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SessionKeyProvider } from "../../providers/SessionKeyProvider";
+import { MessagingClientProvider } from "../../providers/MessagingClientProvider";
 
 const queryClient = new QueryClient();
 
@@ -22,7 +24,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             name: "suitter",
           }}
         >
-          {children}
+          <SessionKeyProvider>
+            <MessagingClientProvider>{children}</MessagingClientProvider>
+          </SessionKeyProvider>
         </WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
