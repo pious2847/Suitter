@@ -8,3 +8,7 @@ node_modules
 
 package-lock.json
 yarn.lock
+
+./src/scripts
+.DS_Store
+*.md

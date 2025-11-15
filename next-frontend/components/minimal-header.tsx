@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { ConnectButton } from "@mysten/dapp-kit";
 import { Menu } from "lucide-react";
-import { useState } from "react";
 
 interface MinimalHeaderProps {
   onMenuClick: () => void;
