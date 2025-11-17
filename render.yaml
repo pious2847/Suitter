@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: suitter
+    env: static
+    buildCommand: cd next-frontend && npm install && npm run build
+    staticPublishPath: next-frontend/dist
+    envVars:
+      - key: VITE_PACKAGE_ID
+        value: 0x85adced0fe590c6d94a07ba8d8034868227d3de4e7d540c1cded78fd6cb38183
+      - key: VITE_SUIT_REGISTRY
+        value: 0xdf6309497d5dcb7e5a4aefb8e90392d10675e4efc4bcf85470978c181e18c63e
+      - key: VITE_INTERACTION_REGISTRY
+        value: 0xb602fa6e7d602d95ae48b1c5735d02b7448ad91fea33bae2be0c0c42666f1bc5
+      - key: VITE_USERNAME_REGISTRY
+        value: 0x4fb3b92339aee9f4c8282b5eaee221eb5ffba8796d90a48a6b7a26b1fc94260a
+      - key: VITE_TIP_BALANCE_REGISTRY
+        value: 0xeba4d8d3f39db0c4cc650d4c22e846f7b4a96c6c08de15f1081aadd0c71cea00
+      - key: VITE_CHAT_REGISTRY
+        value: 0x352e601455695225ee3d6b1231da6ab8cd6e497ce7f5183c0dae6dbced2fd9dc

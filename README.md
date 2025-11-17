@@ -13,7 +13,7 @@ Deployment URL: [https://suiitter.vercel.app](https://suitter.vercel.app)
 ## Table of Contents
 
 - [Overview](#overview)
-- [Team Members](#team-members)
+- [Team ](#team)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Technical Stack](#technical-stack)
@@ -43,10 +43,7 @@ Bonus Features Implemented:
 
 ## Team Members
 
-- Godrich Armah ( Github profile ::  @RicheySon )
 - Abdul Hafis Mohammed ( Github profile :: @pious2847 )
-- Michael Perry Nii Tettey ( Github profile :: @theniitettey )
-- Gabriel Kwame Addo Quainoo    ( Github profile :: @Gabby-Tech1 )
 
 
 ## Features
