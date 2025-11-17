@@ -2,7 +2,7 @@ services:
   - type: web
     name: suitter
     env: static
-    buildCommand: cd next-frontend && npm install && npm run build
+    buildCommand: cd next-frontend && npm ci && npm run build
     staticPublishPath: next-frontend/dist
     envVars:
       - key: VITE_PACKAGE_ID
