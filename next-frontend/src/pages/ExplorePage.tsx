@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, User, FileText, Loader2 } from 'lucide-react'
+import { Search, User, FileText, Loader2, TrendingUp, Sparkles, Users } from 'lucide-react'
 import { MinimalHeader } from '../../components/minimal-header'
 import { AppSidebar } from '../../components/app-sidebar'
 import { SuiProvider } from '../../components/sui-context'
@@ -8,6 +8,7 @@ import { TrendingSidebar } from '../../components/trending-sidebar'
 import { SuitCard } from '../../components/suit-card'
 import { useSearch, SearchResult } from '../../hooks/useSearch'
 import { truncateAddress } from '@/lib/utils'
+import { useNavigate } from 'react-router-dom'
 
 interface Category {
   name: string
@@ -25,6 +26,7 @@ const CATEGORIES: Category[] = [
 ]
 
 function ExploreContent() {
+  const navigate = useNavigate()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isComposeOpen, setIsComposeOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -32,7 +34,6 @@ function ExploreContent() {
   const [searchFilter, setSearchFilter] = useState<'all' | 'users' | 'posts'>('all')
   const [isSearchActive, setIsSearchActive] = useState(false)
   const { search, isSearching } = useSearch()
-  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set())
 
   // Debounced search effect
   useEffect(() => {
@@ -56,18 +57,6 @@ function ExploreContent() {
 
   const handleLike = (id: string) => {
     console.log('Like post:', id)
-  }
-
-  const handleBookmark = (id: string, isBookmarked: boolean) => {
-    setBookmarks(prev => {
-      const newBookmarks = new Set(prev)
-      if (isBookmarked) {
-        newBookmarks.add(id)
-      } else {
-        newBookmarks.delete(id)
-      }
-      return newBookmarks
-    })
   }
 
   return (
@@ -156,25 +145,39 @@ function ExploreContent() {
                           return (
                             <div
                               key={result.id}
-                              className="p-4 card-base border border-border hover:bg-muted transition-all cursor-pointer"
+                              onClick={() => navigate(`/profile?address=${result.address}`)}
+                              className="p-4 rounded-xl border border-border hover:border-primary/50 hover:bg-muted/50 transition-all cursor-pointer group"
                             >
-                              <div className="flex items-start gap-3">
-                                <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center text-sm font-bold shrink-0">
-                                  {result.username?.charAt(0).toUpperCase() || result.address?.slice(2, 4).toUpperCase() || '?'}
+                              <div className="flex items-start gap-4">
+                                <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center text-lg font-bold shrink-0 overflow-hidden">
+                                  {result.pfpUrl ? (
+                                    <img
+                                      src={result.pfpUrl}
+                                      alt={result.username || 'User'}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="text-foreground">
+                                      {result.username?.charAt(0).toUpperCase() || result.address?.slice(2, 4).toUpperCase() || '?'}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <User size={16} className="text-muted-foreground" />
-                                    <span className="font-semibold text-foreground">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="font-bold text-foreground group-hover:text-primary transition-colors">
                                       {result.username || truncateAddress(result.address || '')}
                                     </span>
+                                    <div className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs font-semibold flex items-center gap-1">
+                                      <User size={12} />
+                                      User
+                                    </div>
                                   </div>
                                   {result.bio && (
                                     <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                                       {result.bio}
                                     </p>
                                   )}
-                                  <p className="text-xs text-muted-foreground mt-2">
+                                  <p className="text-xs text-muted-foreground mt-2 font-mono">
                                     {truncateAddress(result.address || '')}
                                   </p>
                                 </div>
@@ -207,14 +210,16 @@ function ExploreContent() {
                                 media={
                                   result.mediaUrls && result.mediaUrls.length > 0
                                     ? {
-                                        type: 'image' as const,
+                                        type: (result.contentType === 'video' || 
+                                               result.mediaUrls[0].toLowerCase().includes('.mp4') ||
+                                               result.mediaUrls[0].toLowerCase().includes('.webm') ||
+                                               result.mediaUrls[0].toLowerCase().includes('video')
+                                              ) ? 'video' as const : 'image' as const,
                                         url: result.mediaUrls[0],
                                       }
                                     : undefined
                                 }
                                 onLike={handleLike}
-                                onBookmark={handleBookmark}
-                                bookmarked={bookmarks.has(result.id)}
                               />
                             </div>
                           )
@@ -233,24 +238,93 @@ function ExploreContent() {
                 )}
               </div>
             ) : (
-              <div className="p-4">
-                <h2 className="text-2xl font-bold mb-6 text-foreground">Explore</h2>
-                <div className="space-y-3">
-                  {CATEGORIES.map((category) => (
-                    <button
-                      key={category.name}
-                      className="w-full p-4 card-base border border-border hover:bg-muted transition-all text-left group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold text-foreground group-hover:underline">{category.name}</h3>
-                          <p className="text-sm text-muted-foreground mt-1">{category.description}</p>
-                          <p className="text-xs text-muted-foreground mt-2">{(category.postCount / 1000).toFixed(0)}K posts</p>
+              <div className="p-4 space-y-6">
+                {/* Hero Section */}
+                <div className="bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 rounded-2xl p-8 border border-primary/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Sparkles size={28} className="text-primary" />
+                    <h2 className="text-3xl font-bold text-foreground">Discover</h2>
+                  </div>
+                  <p className="text-muted-foreground text-lg">
+                    Explore trending topics, find interesting people, and discover amazing content on the blockchain
+                  </p>
+                </div>
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-muted/50 rounded-xl p-4 border border-border">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Users size={16} />
+                      <span className="text-xs font-medium">Active Users</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">2.4K+</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-xl p-4 border border-border">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <FileText size={16} />
+                      <span className="text-xs font-medium">Total Posts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">15K+</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-xl p-4 border border-border">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <TrendingUp size={16} />
+                      <span className="text-xs font-medium">Trending</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">Web3</p>
+                  </div>
+                </div>
+
+                {/* Categories */}
+                <div>
+                  <h3 className="text-xl font-bold mb-4 text-foreground flex items-center gap-2">
+                    <TrendingUp size={20} />
+                    Popular Topics
+                  </h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    {CATEGORIES.map((category, index) => (
+                      <button
+                        key={category.name}
+                        className="w-full p-4 rounded-xl border border-border hover:border-primary/50 hover:bg-muted/50 transition-all text-left group relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/5 to-transparent rounded-full -mr-16 -mt-16" />
+                        <div className="relative flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
+                                #{index + 1}
+                              </div>
+                              <h3 className="font-bold text-lg text-foreground group-hover:text-primary transition-colors">
+                                {category.name}
+                              </h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground ml-13">
+                              {category.description}
+                            </p>
+                            <div className="flex items-center gap-2 mt-2 ml-13">
+                              <div className="px-2 py-1 bg-muted rounded-full text-xs font-semibold text-muted-foreground">
+                                {(category.postCount / 1000).toFixed(0)}K posts
+                              </div>
+                              <div className="px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 rounded-full text-xs font-semibold">
+                                Trending
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-4xl font-bold text-muted/20 ml-4">
+                            {category.name.charAt(0)}
+                          </div>
                         </div>
-                        <div className="text-2xl font-bold text-muted ml-4">{category.name.charAt(0)}</div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Search Prompt */}
+                <div className="bg-muted/30 rounded-xl p-6 border border-border text-center">
+                  <Search size={32} className="mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    💡 Use the search bar above to find specific users, posts, or topics
+                  </p>
                 </div>
               </div>
             )}

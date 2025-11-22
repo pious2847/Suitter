@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "../components/theme-provider";
+import { Toaster } from "../components/ui/toaster";
 import Layout from "./Layout";
 import HomePage from "./pages/HomePage";
 import FeedPage from "./pages/FeedPage";
@@ -32,6 +33,7 @@ function App() {
               <Route path="assets" element={<AssetsPage />} />
             </Route>
           </Routes>
+          <Toaster />
         </BrowserRouter>
       </ThemeProvider>
     </AppProvider>

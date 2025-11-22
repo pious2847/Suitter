@@ -13,9 +13,6 @@ function SuitsContent() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [likedSuits, setLikedSuits] = useState<Set<string>>(new Set());
-  const [bookmarkedSuits, setBookmarkedSuits] = useState<Set<string>>(
-    new Set()
-  );
 
   const suits = [
     {
@@ -60,15 +57,6 @@ function SuitsContent() {
     });
   };
 
-  const handleBookmark = (id: string, isBookmarked: boolean) => {
-    setBookmarkedSuits((prev) => {
-      const next = new Set(prev);
-      if (!isBookmarked) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   return (
     <div className="flex flex-col h-screen bg-background">
       <MinimalHeader onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
@@ -107,9 +95,7 @@ function SuitsContent() {
                   key={suit.id}
                   {...suit}
                   liked={likedSuits.has(suit.id)}
-                  bookmarked={bookmarkedSuits.has(suit.id)}
                   onLike={handleLike}
-                  onBookmark={handleBookmark}
                 />
               ))}
             </div>

@@ -3,7 +3,10 @@ import { useCurrentAccount } from "@mysten/dapp-kit";
 import { useSuits } from "../hooks/useSuits";
 import { useInteractions } from "../hooks/useInteractions";
 import { useProfile } from "../hooks/useProfile";
+import { useTipping } from "../hooks/useTipping";
+import { toast } from "../hooks/use-toast";
 import { SuitCard } from "./suit-card";
+import { SuitCardSkeletonList } from "./suit-card-skeleton";
 import { FeedVertical } from "./feed-vertical";
 import { ReplyModal } from "./reply-modal";
 import { CommentsView } from "./comments-view";
@@ -16,10 +19,12 @@ interface Suit {
   avatar: string;
   authorAddress?: string;
   content: string;
+  contentType?: string;
   timestamp: number;
   likes: number;
   replies: number;
   reposts: number;
+  tipTotal?: number;
   liked: boolean;
   reposted?: boolean;
   isNFT: boolean;
@@ -36,154 +41,6 @@ interface HomeFeedProps {
   onCompose: () => void;
 }
 
-const SAMPLE_SUITS: Suit[] = [
-  {
-    id: "1",
-    author: "Sui Foundation",
-    handle: "suifoundation",
-    avatar: "S",
-    content:
-      "Introducing Suiter - a production-ready decentralized social network built on Sui blockchain. Every post is an NFT with dynamic value.",
-    timestamp: Date.now() - 2 * 60 * 60 * 1000,
-    likes: 1243,
-    replies: 342,
-    reposts: 856,
-    liked: false,
-    reposted: false,
-    isNFT: true,
-    nftValue: 0.5,
-    currentBid: 0.75,
-    isEncrypted: true,
-    media: {
-      type: "image",
-      url: "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=800&q=80",
-    },
-  },
-  {
-    id: "2",
-    author: "Developer Insights",
-    handle: "devinsights",
-    avatar: "D",
-    content:
-      "Building on Sui with React and TypeScript. The performance is incredible. Transactions finalize in milliseconds.",
-    timestamp: Date.now() - 4 * 60 * 60 * 1000,
-    likes: 892,
-    replies: 156,
-    reposts: 423,
-    liked: false,
-    reposted: false,
-    isNFT: true,
-    nftValue: 0.3,
-    currentBid: 0.4,
-    isEncrypted: false,
-    media: {
-      type: "video",
-      url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    },
-  },
-  {
-    id: "3",
-    author: "Web3 Daily",
-    handle: "web3daily",
-    avatar: "W",
-    content:
-      "Monochrome elegance meets decentralization. No distractions, just pure connection on the blockchain.",
-    timestamp: Date.now() - 6 * 60 * 60 * 1000,
-    likes: 2156,
-    replies: 678,
-    reposts: 1245,
-    liked: false,
-    reposted: false,
-    isNFT: true,
-    nftValue: 0.8,
-    currentBid: 1.2,
-    isEncrypted: true,
-  },
-];
-
-const FOLLOWING_SUITS: Suit[] = [
-  {
-    id: "f1",
-    author: "Sui Builder",
-    handle: "suibuilder",
-    avatar: "SB",
-    content:
-      "Just deployed my first dApp on Sui testnet! The developer experience is amazing. Gas fees are incredibly low compared to other chains.",
-    timestamp: Date.now() - 1 * 60 * 60 * 1000,
-    likes: 456,
-    replies: 89,
-    reposts: 123,
-    liked: false,
-    reposted: false,
-    isNFT: true,
-    nftValue: 0.4,
-    currentBid: 0.55,
-    isEncrypted: false,
-  },
-  {
-    id: "f2",
-    author: "NFT Collector",
-    handle: "nftcollector",
-    avatar: "NC",
-    content:
-      "My latest NFT collection on Sui is live! Each piece represents a unique moment in blockchain history. Check out the dynamic metadata updates.",
-    timestamp: Date.now() - 3 * 60 * 60 * 1000,
-    likes: 789,
-    replies: 234,
-    reposts: 456,
-    liked: true,
-    reposted: false,
-    isNFT: true,
-    nftValue: 1.2,
-    currentBid: 1.5,
-    isEncrypted: true,
-    media: {
-      type: "image",
-      url: "https://images.unsplash.com/photo-1620321023374-d1a68fbc720d?w=800&q=80",
-    },
-  },
-  {
-    id: "f3",
-    author: "DeFi Enthusiast",
-    handle: "defilife",
-    avatar: "DE",
-    content:
-      "Sui's parallel execution is a game changer for DeFi. No more waiting for transactions to process sequentially. The future is here!",
-    timestamp: Date.now() - 5 * 60 * 60 * 1000,
-    likes: 1024,
-    replies: 178,
-    reposts: 567,
-    liked: false,
-    reposted: true,
-    isNFT: true,
-    nftValue: 0.6,
-    currentBid: 0.8,
-    isEncrypted: false,
-  },
-  {
-    id: "f4",
-    author: "Move Developer",
-    handle: "movedev",
-    avatar: "MD",
-    content:
-      "Writing smart contracts in Move is such a pleasant experience. The safety guarantees and expressiveness make development faster and more secure.",
-    timestamp: Date.now() - 8 * 60 * 60 * 1000,
-    likes: 623,
-    replies: 145,
-    reposts: 289,
-    liked: true,
-    reposted: false,
-    isNFT: true,
-    nftValue: 0.35,
-    currentBid: 0.45,
-    isEncrypted: true,
-    media: {
-      type: "image",
-      url: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&q=80",
-    },
-  },
-];
-
 export function HomeFeed({ onCompose }: HomeFeedProps) {
   const account = useCurrentAccount();
   const address = account?.address ?? null;
@@ -194,9 +51,10 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
     commentOnSuit,
   } = useInteractions();
   const { fetchProfileByAddress, fetchMyProfileFields } = useProfile();
-  const [forYouSuits, setForYouSuits] = useState<Suit[]>(SAMPLE_SUITS);
-  const [followingSuits, setFollowingSuits] = useState<Suit[]>(FOLLOWING_SUITS);
-  const [onChainSuits, setOnChainSuits] = useState<Suit[]>([]);
+  const { tipSuit } = useTipping();
+  const [allSuits, setAllSuits] = useState<Suit[]>([]);
+  const [videoSuits, setVideoSuits] = useState<Suit[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [tab, setTab] = useState<"foryou" | "following" | "feed">("foryou");
   const [bookmarks, setBookmarks] = useState<Set<string>>(new Set());
   const [replyModalOpen, setReplyModalOpen] = useState(false);
@@ -218,102 +76,112 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
   // Fetch on-chain suits on mount
   useEffect(() => {
     const loadSuits = async () => {
-      const suits = await fetchSuits(20, 0);
+      try {
+        const suits = await fetchSuits(20, 0);
 
-      // Transform on-chain suits to component format
-      const transformedPromises = suits.map(async (suit: any) => {
-        const fields = suit?.content?.fields;
-        if (!fields) return null;
+        // Transform on-chain suits to component format
+        const transformedPromises = suits.map(async (suit: any) => {
+          const fields = suit?.content?.fields;
+          if (!fields) return null;
 
-        const creatorAddress = fields.creator || "";
-        let displayName = truncateAddress(creatorAddress || "Unknown");
-        let handleName = truncateAddress(creatorAddress || "unknown", 4, 4);
+          const creatorAddress = fields.creator || "";
+          let displayName = truncateAddress(creatorAddress || "Unknown");
+          let handleName = truncateAddress(creatorAddress || "unknown", 4, 4);
 
-        // Fetch profile for the creator
-        let avatarUrl = creatorAddress?.slice(-2).toUpperCase() || "??";
-        if (creatorAddress) {
-          const profile = await fetchProfileByAddress(creatorAddress);
-          if (profile) {
-            if (profile.username) {
-              displayName = profile.username;
-              handleName = profile.username;
-            }
-            if (profile.pfpUrl) {
-              avatarUrl = profile.pfpUrl;
+          // Fetch profile for the creator
+          let avatarUrl = creatorAddress?.slice(-2).toUpperCase() || "??";
+          if (creatorAddress) {
+            const profile = await fetchProfileByAddress(creatorAddress);
+            if (profile) {
+              if (profile.username) {
+                displayName = profile.username;
+                handleName = profile.username;
+              }
+              if (profile.pfpUrl) {
+                avatarUrl = profile.pfpUrl;
+              }
             }
           }
-        }
 
-        // Determine media type from content_type field or URL
-        let mediaType: "image" | "video" | undefined = undefined;
-        if (fields.media_urls?.length > 0) {
-          const contentType = fields.content_type || 'text';
-          if (contentType === 'video') {
-            mediaType = 'video';
-          } else if (contentType === 'image') {
-            mediaType = 'image';
-          } else {
-            // Fallback: detect from URL extension
-            const url = fields.media_urls[0].toLowerCase();
-            if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('video')) {
+          // Determine media type from content_type field or URL
+          let mediaType: "image" | "video" | undefined = undefined;
+          if (fields.media_urls?.length > 0) {
+            const contentType = fields.content_type || 'text';
+            if (contentType === 'video') {
               mediaType = 'video';
-            } else {
+            } else if (contentType === 'image') {
               mediaType = 'image';
+            } else {
+              // Fallback: detect from URL extension
+              const url = fields.media_urls[0].toLowerCase();
+              if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('video')) {
+                mediaType = 'video';
+              } else {
+                mediaType = 'image';
+              }
             }
           }
-        }
 
-        return {
-          id: suit.objectId,
-          author: displayName,
-          handle: handleName,
-          avatar: avatarUrl,
-          authorAddress: creatorAddress,
-          content: fields.content || "",
-          timestamp: parseInt(fields.created_at) || Date.now(),
-          likes: parseInt(fields.like_count) || 0,
-          replies: parseInt(fields.comment_count) || 0,
-          reposts: parseInt(fields.retweet_count) || 0,
-          liked: false,
-          reposted: false,
-          isNFT: true,
-          nftValue: 0,
-          currentBid: 0,
-          isEncrypted: false,
-          media:
-            fields.media_urls?.length > 0 && mediaType
-              ? {
-                  type: mediaType,
-                  url: fields.media_urls[0],
-                }
-              : undefined,
-        };
-      });
+          return {
+            id: suit.objectId,
+            author: displayName,
+            handle: handleName,
+            avatar: avatarUrl,
+            authorAddress: creatorAddress,
+            content: fields.content || "",
+            contentType: fields.content_type || 'text',
+            timestamp: parseInt(fields.created_at) || Date.now(),
+            likes: parseInt(fields.like_count) || 0,
+            replies: parseInt(fields.comment_count) || 0,
+            reposts: parseInt(fields.retweet_count) || 0,
+            tipTotal: (parseInt(fields.tip_total) || 0) / 1_000_000_000, // Convert MIST to SUI
+            liked: false,
+            reposted: false,
+            isNFT: true,
+            nftValue: 0,
+            currentBid: 0,
+            isEncrypted: false,
+            media:
+              fields.media_urls?.length > 0 && mediaType
+                ? {
+                    type: mediaType,
+                    url: fields.media_urls[0],
+                  }
+                : undefined,
+          };
+        });
 
-      const transformed = (await Promise.all(transformedPromises)).filter(
-        Boolean
-      ) as Suit[];
+        const transformed = (await Promise.all(transformedPromises)).filter(
+          Boolean
+        ) as Suit[];
 
-      setOnChainSuits(transformed);
+        setAllSuits(transformed);
+        
+        // Filter video suits for the feed tab
+        const videos = transformed.filter(suit => suit.media?.type === 'video');
+        setVideoSuits(videos);
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Failed to load suits:", error);
+        setIsLoading(false);
+      }
     };
 
+    // Initial load
+    loadSuits();
+
+    // Refresh every 5 seconds
     const intervalId = setInterval(() => {
       loadSuits();
-    }, 2000);
+    }, 5000);
 
     // Cleanup interval on unmount
     return () => clearInterval(intervalId);
-
-    // loadSuits();
   }, [fetchSuits, fetchProfileByAddress]);
 
   // Get current suits based on active tab
-  const currentSuits =
-    tab === "following"
-      ? followingSuits
-      : tab === "foryou"
-      ? [...onChainSuits, ...forYouSuits]
-      : forYouSuits;
+  const currentSuits = tab === "feed" ? videoSuits : allSuits;
 
   const toggleLike = async (id: string) => {
     if (!address) {
@@ -325,7 +193,7 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
     if (!suit) return;
     const isOnChain = id.startsWith("0x");
 
-    // Optimistically update UI - update both arrays
+    // Optimistically update UI
     const updateSuit = (suits: Suit[]) =>
       suits.map((s) =>
         s.id === id
@@ -337,9 +205,8 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
           : s
       );
 
-    setOnChainSuits(updateSuit(onChainSuits));
-    setForYouSuits(updateSuit(forYouSuits));
-    setFollowingSuits(updateSuit(followingSuits));
+    setAllSuits(updateSuit(allSuits));
+    setVideoSuits(updateSuit(videoSuits));
 
     // Only call blockchain for on-chain suits
     if (isOnChain) {
@@ -360,9 +227,8 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
               : s
           );
 
-        setOnChainSuits(revertSuit(onChainSuits));
-        setForYouSuits(revertSuit(forYouSuits));
-        setFollowingSuits(revertSuit(followingSuits));
+        setAllSuits(revertSuit(allSuits));
+        setVideoSuits(revertSuit(videoSuits));
       }
     }
   };
@@ -377,7 +243,7 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
     if (!suit) return;
     const isOnChain = id.startsWith("0x");
 
-    // Optimistically update UI - update both arrays
+    // Optimistically update UI
     const updateSuit = (suits: Suit[]) =>
       suits.map((s) =>
         s.id === id
@@ -389,9 +255,8 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
           : s
       );
 
-    setOnChainSuits(updateSuit(onChainSuits));
-    setForYouSuits(updateSuit(forYouSuits));
-    setFollowingSuits(updateSuit(followingSuits));
+    setAllSuits(updateSuit(allSuits));
+    setVideoSuits(updateSuit(videoSuits));
 
     // Only call blockchain for on-chain suits
     if (isOnChain) {
@@ -412,9 +277,8 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
               : s
           );
 
-        setOnChainSuits(revertSuit(onChainSuits));
-        setForYouSuits(revertSuit(forYouSuits));
-        setFollowingSuits(revertSuit(followingSuits));
+        setAllSuits(revertSuit(allSuits));
+        setVideoSuits(revertSuit(videoSuits));
       }
     }
   };
@@ -449,15 +313,14 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
         console.log("Comment submitted successfully!");
       }
 
-      // Increment the reply count - update both arrays
+      // Increment the reply count
       const updateReplies = (suits: Suit[]) =>
         suits.map((suit) =>
           suit.id === suitId ? { ...suit, replies: suit.replies + 1 } : suit
         );
 
-      setOnChainSuits(updateReplies(onChainSuits));
-      setForYouSuits(updateReplies(forYouSuits));
-      setFollowingSuits(updateReplies(followingSuits));
+      setAllSuits(updateReplies(allSuits));
+      setVideoSuits(updateReplies(videoSuits));
     } catch (error: any) {
       console.error("Failed to comment on suit:", error);
     }
@@ -491,6 +354,76 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
     setBookmarks(newBookmarks);
   };
 
+  const handleTip = async (suitId: string, amount: number) => {
+    if (!address) {
+      console.log("Please connect wallet to tip");
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to send tips",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const suit = currentSuits.find((s) => s.id === suitId);
+    if (!suit || !suit.authorAddress) {
+      console.error("Suit or author address not found");
+      toast({
+        title: "Error",
+        description: "Could not find post information",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (address === suit.authorAddress) {
+      toast({
+        title: "Cannot Tip Own Post",
+        description: "You cannot tip your own post",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log("Sending tip:", { suitId, recipient: suit.authorAddress, amount });
+      const result = await tipSuit(suitId, suit.authorAddress, amount);
+      
+      if (result) {
+        console.log("Tip sent successfully!", result);
+        toast({
+          title: "Tip Sent!",
+          description: `Successfully sent ${amount} SUI tip to ${suit.author}!`,
+          variant: "success",
+        });
+        
+        // Optimistically update the tip total
+        const updateTip = (suits: Suit[]) =>
+          suits.map((s) =>
+            s.id === suitId
+              ? { ...s, tipTotal: (s.tipTotal || 0) + amount }
+              : s
+          );
+
+        setAllSuits(updateTip(allSuits));
+        setVideoSuits(updateTip(videoSuits));
+      } else {
+        toast({
+          title: "Failed to Send Tip",
+          description: "Please try again",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Failed to send tip:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send tip",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-background">
       <div className="sticky top-0 bg-background/80 backdrop-blur border-b border-border z-10">
@@ -506,7 +439,7 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t" />
             )}
           </button>
-          <button
+          {/* <button
             onClick={() => setTab("following")}
             className={`flex-1 px-4 py-4 font-semibold text-sm transition-colors relative hover:bg-muted/50 ${
               tab === "following" ? "text-foreground" : "text-muted-foreground"
@@ -516,7 +449,7 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
             {tab === "following" && (
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t" />
             )}
-          </button>
+          </button> */}
           <button
             onClick={() => setTab("feed")}
             className={`flex-1 px-4 py-4 font-semibold text-sm transition-colors relative hover:bg-muted/50 ${
@@ -532,7 +465,7 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
       </div>
 
       {/* Compose Section */}
-      t{address && tab !== "feed" && (
+      {address && (
         <div className="border-b border-border p-4">
           <button
             onClick={onCompose}
@@ -561,10 +494,54 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
         </div>
       )}
 
-      {/* Conditional Content Based on Tab */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {tab === "feed" ? (
-          <FeedVertical />
+          <FeedVertical
+            videos={videoSuits.map((suit) => ({
+              id: suit.id,
+              author: suit.author,
+              handle: suit.handle,
+              avatar: suit.avatar,
+              authorAddress: suit.authorAddress,
+              content: suit.content,
+              videoUrl: suit.media?.url || "",
+              timestamp: suit.timestamp,
+              likes: suit.likes,
+              replies: suit.replies,
+              reposts: suit.reposts,
+              liked: suit.liked,
+              reposted: suit.reposted,
+              bookmarked: bookmarks.has(suit.id),
+            }))}
+            bookmarks={bookmarks}
+            onLike={toggleLike}
+            onRepost={toggleRepost}
+            onReply={handleReply}
+            onShare={handleShare}
+            onBookmark={toggleBookmark}
+            isLoading={isLoading}
+          />
+        ) : isLoading ? (
+          <SuitCardSkeletonList count={5} />
+        ) : currentSuits.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <div className="text-6xl mb-4">📭</div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              No suits yet
+            </h3>
+            <p className="text-muted-foreground max-w-sm">
+              Be the first to post a suit on the blockchain!
+            </p>
+            {address && (
+              <button
+                onClick={onCompose}
+                className="mt-4 px-6 py-2 bg-foreground text-background rounded-full font-semibold hover:opacity-90 transition-opacity"
+              >
+                Create Post
+              </button>
+            )}
+          </div>
         ) : (
           <>
             {currentSuits.map((suit) => (
@@ -572,13 +549,13 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
                 key={suit.id}
                 {...suit}
                 media={suit.media}
+                tipTotal={suit.tipTotal}
                 onLike={toggleLike}
                 onRepost={toggleRepost}
                 onReply={handleReply}
                 onViewComments={handleViewComments}
                 onShare={handleShare}
-                onBookmark={toggleBookmark}
-                bookmarked={bookmarks.has(suit.id)}
+                onTip={handleTip}
               />
             ))}
           </>

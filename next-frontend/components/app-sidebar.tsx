@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { X, Home, Compass, Heart, Mail, Bookmark, User, Settings, ChevronLeft, ChevronRight, Wallet } from 'lucide-react'
+import { X, Home, Compass, Heart, Mail, User, Settings, ChevronLeft, ChevronRight, Wallet } from 'lucide-react'
 
 interface AppSidebarProps {
   isOpen: boolean
@@ -18,7 +18,6 @@ export function AppSidebar({ isOpen, onClose, onCompose }: AppSidebarProps) {
     { label: 'Explore', icon: Compass, href: '/explore' },
     { label: 'Notifications', icon: Heart, href: '/notifications' },
     { label: 'Messages', icon: Mail, href: '/messages' },
-    { label: 'Bookmarks', icon: Bookmark, href: '/bookmarks' },
     { label: 'Assets', icon: Wallet, href: '/assets' },
     { label: 'Profile', icon: User, href: '/profile' },
     { label: 'Settings', icon: Settings, href: '/settings' },

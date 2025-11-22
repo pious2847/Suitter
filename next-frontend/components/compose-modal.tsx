@@ -4,6 +4,7 @@ import { useCurrentAccount } from "@mysten/dapp-kit";
 import { useSuits } from "../hooks/useSuits";
 import { useWalrusUpload } from "../hooks/useWalrusUpload";
 import { useProfile } from "../hooks/useProfile";
+import { toast } from "../hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 
@@ -175,15 +176,27 @@ export function ComposeModal({ isOpen, onClose }: ComposeModalProps) {
       // Post suit with media URLs and content type
       await postSuit(content, mediaUrls, contentType);
 
+      toast({
+        title: "Post Created!",
+        description: "Your post has been published successfully.",
+        variant: "success",
+      });
+
       // Cleanup
       previewUrls.forEach((url) => URL.revokeObjectURL(url));
       setContent("");
       setSelectedFiles([]);
       setPreviewUrls([]);
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to post:", error);
-      setError("Failed to post. Please try again.");
+      const errorMessage = error?.message || "Failed to post. Please try again.";
+      setError(errorMessage);
+      toast({
+        title: "Failed to Post",
+        description: errorMessage,
+        variant: "destructive",
+      });
     } finally {
       setIsPosting(false);
     }
@@ -229,11 +242,11 @@ export function ComposeModal({ isOpen, onClose }: ComposeModalProps) {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="bg-background border border-border rounded-2xl w-full max-w-2xl shadow-2xl overflow-visible relative"
+          className="bg-background border border-border rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <button
               onClick={handleClose}
               disabled={isPosting}
@@ -248,8 +261,8 @@ export function ComposeModal({ isOpen, onClose }: ComposeModalProps) {
             <div className="w-9" />
           </div>
 
-          {/* Content */}
-          <div className="p-4">
+          {/* Content - Scrollable */}
+          <div className="p-4 overflow-y-auto flex-1">
             <div className="flex gap-3">
               <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden">
                 {userProfile?.pfpUrl ? (
@@ -347,8 +360,8 @@ export function ComposeModal({ isOpen, onClose }: ComposeModalProps) {
             className="hidden"
           />
 
-          {/* Footer */}
-          <div className="border-t border-border px-4 py-3 flex justify-between items-center relative">
+          {/* Footer - Fixed at bottom */}
+          <div className="border-t border-border px-4 py-3 flex justify-between items-center relative shrink-0">
             <div className="flex gap-1">
               <button
                 onClick={() => fileInputRef.current?.click()}

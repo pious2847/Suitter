@@ -1,24 +1,25 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Copy, ExternalLink, RefreshCw, Image, Package, Coins, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Copy, ExternalLink, RefreshCw, Image, Package, Coins, Eye, EyeOff, DollarSign, Download, Heart, MessageCircle, X } from 'lucide-react'
 import { MinimalHeader } from '../../components/minimal-header'
 import { AppSidebar } from '../../components/app-sidebar'
 import { ComposeModal } from '../../components/compose-modal'
 import { TrendingSidebar } from '../../components/trending-sidebar'
 import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit'
-// import CONFIG from '../../config'
+import { useTipping } from '../../hooks/useTipping'
+import { toast } from '../../hooks/use-toast'
+import CONFIG from '../../config'
 
-// const PACKAGE_ID = CONFIG.VITE_PACKAGE_ID
-
-interface Bid {
-  id: string
-  suitName: string
-  image: string
-  currentBid: number
-  myBid: number
-  highestBidder: string
-  endsIn: string
-  status: 'winning' | 'outbid'
-}
+// Bid interface - for future implementation
+// interface Bid {
+//   id: string
+//   suitName: string
+//   image: string
+//   currentBid: number
+//   myBid: number
+//   highestBidder: string
+//   endsIn: string
+//   status: 'winning' | 'outbid'
+// }
 
 function AssetsContent() {
   const currentAccount = useCurrentAccount()
@@ -27,14 +28,20 @@ function AssetsContent() {
   const isConnected = !!currentAccount
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isComposeOpen, setIsComposeOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'suits' | 'nfts' | 'bids'>('suits')
+  const [activeTab, setActiveTab] = useState<'all' | 'videos' | 'images'>('all')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isBalanceHidden, setIsBalanceHidden] = useState(false)
   const [suiBalance, setSuiBalance] = useState<number>(0)
   const [isLoadingBalance, setIsLoadingBalance] = useState(true)
-  const [suits, setSuits] = useState<any[]>([])
-  const [nfts, setNfts] = useState<any[]>([])
-  const [isLoadingSuits, setIsLoadingSuits] = useState(true)
+  const [userPosts, setUserPosts] = useState<any[]>([])
+  const [isLoadingPosts, setIsLoadingPosts] = useState(true)
+  const [tipBalance, setTipBalance] = useState<any>(null)
+  const [isLoadingTips, setIsLoadingTips] = useState(true)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [isWithdrawing, setIsWithdrawing] = useState(false)
+  
+  const { getTipBalanceInfo, withdrawFunds } = useTipping()
 
   // Fetch real SUI balance
   const fetchBalance = async () => {
@@ -56,72 +63,159 @@ function AssetsContent() {
     }
   }
 
-  // Fetch user's suits and NFTs
-  const fetchUserAssets = async () => {
+  // Fetch user's posted content (suits)
+  const fetchUserPosts = async () => {
     if (!address) return
     
-    setIsLoadingSuits(true)
+    setIsLoadingPosts(true)
     try {
-      // Fetch all owned objects
-      const ownedObjects = await suiClient.getOwnedObjects({
-        owner: address,
-        options: {
-          showType: true,
-          showContent: true,
-          showDisplay: true,
-        },
+      // Get the SuitRegistry to fetch suit IDs
+      const registry = await suiClient.getObject({
+        id: CONFIG.SUIT_REGISTRY,
+        options: { showContent: true },
       })
 
-      const userSuits: any[] = []
-      const userNfts: any[] = []
+      const registryContent = registry.data?.content as any
+      const suitIds = registryContent?.fields?.suit_ids || []
 
-      ownedObjects.data.forEach((obj) => {
-        const objType = obj.data?.type
-        const content = obj.data?.content as any
-        const fields = content?.fields
+      // Fetch all suits
+      const allSuits = await Promise.all(
+        suitIds.map(async (id: string) => {
+          try {
+            const suit = await suiClient.getObject({
+              id,
+              options: { showContent: true },
+            })
+            return suit.data
+          } catch (e) {
+            return null
+          }
+        })
+      )
 
-        if (objType?.includes('::suits::Suit')) {
-          // It's a Suit
-          userSuits.push({
-            id: obj.data?.objectId || '',
-            name: `Suit #${obj.data?.objectId?.slice(-4)}`,
-            description: fields?.content || 'A unique Suit NFT',
-            image: '🤵',
-            objectId: obj.data?.objectId || '',
-            value: 0, // Could calculate based on engagement
-            isOwned: true,
-            rarity: 'Common',
-            creator: fields?.creator || '',
-            content: fields?.content || '',
-            likes: parseInt(fields?.like_count) || 0,
-            createdAt: parseInt(fields?.created_at) || Date.now(),
-          })
-        } else {
-          // It's another NFT
-          userNfts.push({
-            id: obj.data?.objectId || '',
-            name: obj.data?.display?.data?.name || `NFT #${obj.data?.objectId?.slice(-4)}`,
-            collection: obj.data?.display?.data?.collection || 'Unknown Collection',
-            image: obj.data?.display?.data?.image_url || '🎨',
-            objectId: obj.data?.objectId || '',
-            description: obj.data?.display?.data?.description || 'A unique NFT',
-          })
+      // Filter suits created by this user
+      const posts: any[] = []
+      
+      allSuits.forEach((suit) => {
+        if (!suit) return
+        
+        const fields = (suit.content as any)?.fields
+        if (!fields || fields.creator !== address) return
+
+        // Determine media type
+        let mediaType: 'text' | 'image' | 'video' = 'text'
+        let mediaUrl: string | undefined = undefined
+
+        if (fields?.media_urls?.length > 0) {
+          mediaUrl = fields.media_urls[0]
+          const contentType = fields.content_type || 'text'
+          
+          if (contentType === 'video') {
+            mediaType = 'video'
+          } else if (contentType === 'image') {
+            mediaType = 'image'
+          } else if (mediaUrl) {
+            // Fallback: detect from URL
+            const url = mediaUrl.toLowerCase()
+            if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('video')) {
+              mediaType = 'video'
+            } else if (url.includes('.jpg') || url.includes('.jpeg') || url.includes('.png') || url.includes('.gif') || url.includes('.webp') || url.includes('image')) {
+              mediaType = 'image'
+            }
+          }
         }
+
+        posts.push({
+          id: suit.objectId || '',
+          objectId: suit.objectId || '',
+          content: fields?.content || '',
+          mediaType,
+          mediaUrl,
+          likes: parseInt(fields?.like_count) || 0,
+          comments: parseInt(fields?.comment_count) || 0,
+          reposts: parseInt(fields?.retweet_count) || 0,
+          tipTotal: Number(fields?.tip_total || 0) / 1_000_000_000, // Convert MIST to SUI
+          createdAt: parseInt(fields?.created_at) || Date.now(),
+        })
       })
 
-      setSuits(userSuits)
-      setNfts(userNfts)
+      // Sort by creation date (newest first)
+      posts.sort((a, b) => b.createdAt - a.createdAt)
+
+      setUserPosts(posts)
     } catch (error) {
-      console.error('Error fetching assets:', error)
+      console.error('Error fetching posts:', error)
     } finally {
-      setIsLoadingSuits(false)
+      setIsLoadingPosts(false)
     }
   }
 
-  // Fetch balance on mount and when address changes
+  // Fetch tip balance
+  const fetchTipBalance = async () => {
+    if (!address) return
+    
+    setIsLoadingTips(true)
+    try {
+      const balance = await getTipBalanceInfo(address)
+      setTipBalance(balance)
+    } catch (error) {
+      console.error('Error fetching tip balance:', error)
+    } finally {
+      setIsLoadingTips(false)
+    }
+  }
+
+  // Handle withdrawal
+  const handleWithdraw = async () => {
+    if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid amount to withdraw",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const amount = parseFloat(withdrawAmount)
+    if (amount > tipBalance.balance) {
+      toast({
+        title: "Insufficient Balance",
+        description: "You don't have enough balance to withdraw this amount",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsWithdrawing(true)
+    try {
+      const result = await withdrawFunds(amount)
+      if (result) {
+        toast({
+          title: "Withdrawal Successful!",
+          description: `${amount} SUI has been transferred to your wallet`,
+          variant: "success",
+        })
+        setShowWithdrawModal(false)
+        setWithdrawAmount('')
+        // Refresh balances
+        await Promise.all([fetchBalance(), fetchTipBalance()])
+      }
+    } catch (error: any) {
+      toast({
+        title: "Withdrawal Failed",
+        description: error.message || "Failed to withdraw funds",
+        variant: "destructive",
+      })
+    } finally {
+      setIsWithdrawing(false)
+    }
+  }
+
+  // Fetch balance, posts, and tips on mount and when address changes
   useEffect(() => {
     fetchBalance()
-    fetchUserAssets()
+    fetchUserPosts()
+    fetchTipBalance()
   }, [address])
 
   const walletData = {
@@ -131,9 +225,8 @@ function AssetsContent() {
     change24h: 5.67, // You can fetch this from a price API
   }
 
-  const bids: Bid[] = [
-    // Bids will be empty for now - can be implemented later
-  ]
+  // Bids will be empty for now - can be implemented later
+  // const bids: Bid[] = []
 
   const handleCopyAddress = () => {
     if (address) {
@@ -144,9 +237,17 @@ function AssetsContent() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await Promise.all([fetchBalance(), fetchUserAssets()])
+    await Promise.all([fetchBalance(), fetchUserPosts(), fetchTipBalance()])
     setTimeout(() => setIsRefreshing(false), 1000)
   }
+
+  // Filter posts based on active tab
+  const filteredPosts = userPosts.filter(post => {
+    if (activeTab === 'all') return true
+    if (activeTab === 'videos') return post.mediaType === 'video'
+    if (activeTab === 'images') return post.mediaType === 'image'
+    return true
+  })
 
   const toggleBalanceVisibility = () => {
     setIsBalanceHidden(!isBalanceHidden)
@@ -305,54 +406,116 @@ function AssetsContent() {
               </div>
             </div>
 
+            {/* Tip Earnings Card */}
+            <div className="p-4 border-b border-border">
+              <div className="bg-gradient-to-br from-green-500/5 to-emerald-500/10 border border-green-500/20 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center">
+                      <DollarSign size={24} className="text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tip Earnings</p>
+                      {isLoadingTips ? (
+                        <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+                      ) : (
+                        <h3 className="text-2xl font-bold text-green-600 dark:text-green-400">
+                          {tipBalance?.balance?.toFixed(4) || '0.0000'} SUI
+                        </h3>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowWithdrawModal(true)}
+                    disabled={isLoadingTips || !tipBalance?.balance || tipBalance.balance === 0}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Download size={16} />
+                    Withdraw
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background/50 rounded-lg p-3 backdrop-blur">
+                    <p className="text-xs text-muted-foreground mb-1">Total Received</p>
+                    {isLoadingTips ? (
+                      <div className="h-5 w-20 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <p className="font-semibold text-green-600 dark:text-green-400">
+                        {tipBalance?.totalReceived?.toFixed(4) || '0.0000'} SUI
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-background/50 rounded-lg p-3 backdrop-blur">
+                    <p className="text-xs text-muted-foreground mb-1">Total Withdrawn</p>
+                    {isLoadingTips ? (
+                      <div className="h-5 w-20 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <p className="font-semibold">
+                        {tipBalance?.totalWithdrawn?.toFixed(4) || '0.0000'} SUI
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {!isLoadingTips && tipBalance?.balance === 0 && (
+                  <div className="mt-3 p-3 bg-background/50 rounded-lg backdrop-blur text-center">
+                    <p className="text-xs text-muted-foreground">
+                      💡 Create engaging content to start earning tips from your followers!
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Tabs */}
             <div className="border-b border-border">
               <div className="flex">
                 <button
-                  onClick={() => setActiveTab('suits')}
+                  onClick={() => setActiveTab('all')}
                   className={`flex-1 px-4 py-4 font-semibold text-sm transition-colors relative hover:bg-muted/50 ${
-                    activeTab === 'suits'
+                    activeTab === 'all'
                       ? 'text-foreground'
                       : 'text-muted-foreground'
                   }`}
                 >
                   <div className="flex items-center justify-center gap-2">
                     <Package size={18} />
-                    Suits
+                    All Posts
                   </div>
-                  {activeTab === 'suits' && (
+                  {activeTab === 'all' && (
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t" />
                   )}
                 </button>
                 <button
-                  onClick={() => setActiveTab('nfts')}
+                  onClick={() => setActiveTab('videos')}
                   className={`flex-1 px-4 py-4 font-semibold text-sm transition-colors relative hover:bg-muted/50 ${
-                    activeTab === 'nfts'
+                    activeTab === 'videos'
+                      ? 'text-foreground'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <Package size={18} />
+                    Videos
+                  </div>
+                  {activeTab === 'videos' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('images')}
+                  className={`flex-1 px-4 py-4 font-semibold text-sm transition-colors relative hover:bg-muted/50 ${
+                    activeTab === 'images'
                       ? 'text-foreground'
                       : 'text-muted-foreground'
                   }`}
                 >
                   <div className="flex items-center justify-center gap-2">
                     <Image size={18} />
-                    NFTs
+                    Images
                   </div>
-                  {activeTab === 'nfts' && (
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t" />
-                  )}
-                </button>
-                <button
-                  onClick={() => setActiveTab('bids')}
-                  className={`flex-1 px-4 py-4 font-semibold text-sm transition-colors relative hover:bg-muted/50 ${
-                    activeTab === 'bids'
-                      ? 'text-foreground'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <Coins size={18} />
-                    Bids
-                  </div>
-                  {activeTab === 'bids' && (
+                  {activeTab === 'images' && (
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-t" />
                   )}
                 </button>
@@ -361,156 +524,95 @@ function AssetsContent() {
 
             {/* Content */}
             <div className="flex-1 p-4">
-              {isLoadingSuits ? (
+              {isLoadingPosts ? (
                 <div className="flex items-center justify-center py-16">
                   <RefreshCw size={32} className="text-muted-foreground animate-spin" />
                 </div>
+              ) : filteredPosts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
+                    {activeTab === 'videos' && <Package size={40} className="text-muted-foreground" />}
+                    {activeTab === 'images' && <Image size={40} className="text-muted-foreground" />}
+                    {activeTab === 'all' && <Package size={40} className="text-muted-foreground" />}
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">
+                    No {activeTab === 'all' ? 'posts' : activeTab} found
+                  </h3>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    {activeTab === 'videos' && 'You haven\'t posted any videos yet.'}
+                    {activeTab === 'images' && 'You haven\'t posted any images yet.'}
+                    {activeTab === 'all' && 'You haven\'t posted anything yet. Start creating!'}
+                  </p>
+                </div>
               ) : (
-                <>
-                  {activeTab === 'suits' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {suits.map((suit) => (
-                        <div
-                          key={suit.id}
-                          className="bg-card border border-border rounded-xl overflow-hidden hover:border-primary/50 transition-colors cursor-pointer"
-                        >
-                          <div className="aspect-square bg-muted flex items-center justify-center text-6xl">
-                            {suit.image}
-                          </div>
-                          <div className="p-4">
-                            <div className="flex items-start justify-between mb-2">
-                              <h4 className="font-semibold">{suit.name}</h4>
-                              <span className="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full font-semibold">
-                                {suit.rarity}
-                              </span>
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{suit.description}</p>
-                            <div className="flex items-center justify-between pt-3 border-t border-border">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Likes</p>
-                                <p className="font-semibold text-lg">{suit.likes}</p>
-                              </div>
-                              <button
-                                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-semibold"
-                              >
-                                View Details
-                              </button>
-                            </div>
-                            <div className="mt-2 pt-2 border-t border-border">
-                              <p className="text-xs font-mono text-muted-foreground truncate">
-                                {suit.objectId}
-                              </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {filteredPosts.map((post) => (
+                    <div
+                      key={post.id}
+                      className="group relative aspect-square bg-muted rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all cursor-pointer"
+                    >
+                      {/* Media Display */}
+                      {post.mediaType === 'video' && post.mediaUrl ? (
+                        <div className="relative w-full h-full">
+                          <video
+                            src={post.mediaUrl}
+                            className="w-full h-full object-cover"
+                            muted
+                          />
+                          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                            <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
+                              <div className="w-0 h-0 border-t-8 border-t-transparent border-l-12 border-l-black border-b-8 border-b-transparent ml-1" />
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {activeTab === 'nfts' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {nfts.map((nft) => (
-                        <div
-                          key={nft.id}
-                          className="bg-card border border-border rounded-xl overflow-hidden hover:border-primary/50 transition-colors cursor-pointer"
-                        >
-                          <div className="aspect-square bg-muted flex items-center justify-center text-6xl">
-                            {nft.image}
-                          </div>
-                          <div className="p-4">
-                            <h4 className="font-semibold mb-1">{nft.name}</h4>
-                            <p className="text-sm text-muted-foreground mb-2">{nft.collection}</p>
-                            <p className="text-xs text-muted-foreground mb-3 line-clamp-2">{nft.description}</p>
-                            <div className="flex items-center justify-between pt-3 border-t border-border">
-                              <span className="text-xs font-mono text-muted-foreground truncate">
-                                {nft.objectId.slice(0, 6)}...{nft.objectId.slice(-4)}
-                              </span>
-                              <button
-                                className="p-1.5 hover:bg-muted rounded-lg transition-colors"
-                                aria-label="View details"
-                              >
-                                <ExternalLink size={14} />
-                              </button>
-                            </div>
-                          </div>
+                      ) : post.mediaType === 'image' && post.mediaUrl ? (
+                        <img
+                          src={post.mediaUrl}
+                          alt="Post"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center p-4 bg-linear-to-br from-primary/10 to-accent/10">
+                          <p className="text-sm text-center line-clamp-6 text-foreground">
+                            {post.content}
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      )}
 
-                  {activeTab === 'bids' && (
-                    <div className="space-y-3">
-                      {bids.map((bid) => (
-                        <div
-                          key={bid.id}
-                          className="bg-card border border-border rounded-xl p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-20 h-20 bg-muted rounded-lg flex items-center justify-center text-4xl shrink-0">
-                              {bid.image}
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between mb-2">
-                                <h4 className="font-semibold text-lg">{bid.suitName}</h4>
-                                <span className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                                  bid.status === 'winning' 
-                                    ? 'bg-green-500/10 text-green-500' 
-                                    : 'bg-red-500/10 text-red-500'
-                                }`}>
-                                  {bid.status === 'winning' ? '🏆 Winning' : '⚠️ Outbid'}
-                                </span>
-                              </div>
-                              <div className="grid grid-cols-2 gap-3 mb-3">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Your Bid</p>
-                                  <p className="font-semibold">{bid.myBid} SUI</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Current Bid</p>
-                                  <p className="font-semibold text-primary">{bid.currentBid} SUI</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-between pt-3 border-t border-border">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Ends in</p>
-                                  <p className="text-sm font-semibold">{bid.endsIn}</p>
-                                </div>
-                                <button
-                                  className={`px-4 py-2 rounded-lg transition-colors text-sm font-semibold ${
-                                    bid.status === 'winning'
-                                      ? 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                  }`}
-                                >
-                                  {bid.status === 'winning' ? 'View Auction' : 'Increase Bid'}
-                                </button>
-                              </div>
-                            </div>
+                      {/* Hover Overlay */}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                        <div className="flex items-center gap-3 text-white text-xs flex-wrap">
+                          <div className="flex items-center gap-1">
+                            <Heart size={14} />
+                            <span>{post.likes}</span>
                           </div>
+                          <div className="flex items-center gap-1">
+                            <MessageCircle size={14} />
+                            <span>{post.comments}</span>
+                          </div>
+                          {post.tipTotal > 0 && (
+                            <div className="flex items-center gap-1 text-green-400">
+                              <DollarSign size={14} />
+                              <span>{post.tipTotal.toFixed(2)}</span>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Empty State */}
-                  {((activeTab === 'suits' && suits.length === 0) ||
-                    (activeTab === 'nfts' && nfts.length === 0) ||
-                    (activeTab === 'bids' && bids.length === 0)) && (
-                    <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-4">
-                        {activeTab === 'suits' && <Package size={40} className="text-muted-foreground" />}
-                        {activeTab === 'nfts' && <Image size={40} className="text-muted-foreground" />}
-                        {activeTab === 'bids' && <Coins size={40} className="text-muted-foreground" />}
+                        {post.content && (
+                          <p className="text-white text-xs mt-2 line-clamp-2">
+                            {post.content}
+                          </p>
+                        )}
                       </div>
-                      <h3 className="text-lg font-semibold mb-2">No {activeTab} found</h3>
-                      <p className="text-sm text-muted-foreground max-w-sm">
-                        {activeTab === 'suits' && 'You don\'t have any suits in your collection yet.'}
-                        {activeTab === 'nfts' && 'You don\'t have any NFTs in your collection yet.'}
-                        {activeTab === 'bids' && 'You haven\'t placed any bids yet.'}
-                      </p>
+
+                      {/* Media Type Badge */}
+                      {post.mediaType !== 'text' && (
+                        <div className="absolute top-2 right-2 px-2 py-1 bg-black/70 backdrop-blur rounded-full text-white text-xs font-semibold">
+                          {post.mediaType === 'video' ? '🎥' : '📷'}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -520,6 +622,119 @@ function AssetsContent() {
       </div>
 
       <ComposeModal isOpen={isComposeOpen} onClose={() => setIsComposeOpen(false)} />
+
+      {/* Withdraw Modal */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-background border border-border rounded-2xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <h2 className="text-xl font-bold">Withdraw Earnings</h2>
+              <button
+                onClick={() => setShowWithdrawModal(false)}
+                className="p-2 hover:bg-muted rounded-full transition-colors"
+                disabled={isWithdrawing}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-muted/50 rounded-lg p-4">
+                <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {tipBalance?.balance?.toFixed(4) || '0.0000'} SUI
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="withdraw-amount" className="block text-sm font-medium mb-2">
+                  Withdrawal Amount
+                </label>
+                <div className="relative">
+                  <input
+                    id="withdraw-amount"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    max={tipBalance?.balance || 0}
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder="0.0000"
+                    disabled={isWithdrawing}
+                    className="w-full bg-muted text-foreground rounded-lg px-4 py-3 pr-16 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold">
+                    SUI
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setWithdrawAmount((tipBalance?.balance * 0.25).toFixed(4))}
+                    className="flex-1 px-3 py-1 text-xs bg-muted hover:bg-muted/80 rounded transition-colors"
+                    disabled={isWithdrawing}
+                  >
+                    25%
+                  </button>
+                  <button
+                    onClick={() => setWithdrawAmount((tipBalance?.balance * 0.5).toFixed(4))}
+                    className="flex-1 px-3 py-1 text-xs bg-muted hover:bg-muted/80 rounded transition-colors"
+                    disabled={isWithdrawing}
+                  >
+                    50%
+                  </button>
+                  <button
+                    onClick={() => setWithdrawAmount((tipBalance?.balance * 0.75).toFixed(4))}
+                    className="flex-1 px-3 py-1 text-xs bg-muted hover:bg-muted/80 rounded transition-colors"
+                    disabled={isWithdrawing}
+                  >
+                    75%
+                  </button>
+                  <button
+                    onClick={() => setWithdrawAmount(tipBalance?.balance.toFixed(4))}
+                    className="flex-1 px-3 py-1 text-xs bg-muted hover:bg-muted/80 rounded transition-colors"
+                    disabled={isWithdrawing}
+                  >
+                    Max
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  💡 Funds will be transferred to your connected wallet address
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-border">
+              <button
+                onClick={() => setShowWithdrawModal(false)}
+                disabled={isWithdrawing}
+                className="flex-1 px-4 py-2 border border-border rounded-full font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleWithdraw}
+                disabled={isWithdrawing || !withdrawAmount || parseFloat(withdrawAmount) <= 0}
+                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-full font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isWithdrawing ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Withdrawing...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Withdraw
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

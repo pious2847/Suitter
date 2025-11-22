@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Registry</title>
+</head>
+<body>
+    <h1>Test TipBalanceRegistry</h1>
+    <button onclick="testRegistry()">Test Registry</button>
+    <pre id="output"></pre>
+
+    <script type="module">
+        import { SuiClient } from 'https://esm.sh/@mysten/sui/client';
+
+        const PACKAGE_ID = '0x85adced0fe590c6d94a07ba8d8034868227d3de4e7d540c1cded78fd6cb38183';
+        const TIP_BALANCE_REGISTRY = '0xeba4d8d3f39db0c4cc650d4c22e846f7b4a96c6c08de15f1081aadd0c71cea00';
+
+        window.testRegistry = async function() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing...\n';
+
+            const client = new SuiClient({ url: 'https://fullnode.testnet.sui.io' });
+
+            try {
+                output.textContent += '\n1. Testing TipBalanceRegistry ID...\n';
+                const registry = await client.getObject({
+                    id: TIP_BALANCE_REGISTRY,
+                    options: { showContent: true, showType: true }
+                });
+
+                output.textContent += 'Registry found!\n';
+                output.textContent += JSON.stringify(registry, null, 2);
+            } catch (err) {
+                output.textContent += 'Registry NOT found: ' + err.message + '\n\n';
+                
+                // Try to find the correct registry
+                output.textContent += '2. Searching for TipBalanceRegistry...\n';
+                try {
+                    // Query for objects of this type
+                    const objects = await client.queryEvents({
+                        query: { MoveEventType: `${PACKAGE_ID}::tipping::TipSent` }
+                    });
+                    output.textContent += 'Found tip events: ' + objects.data.length + '\n';
+                } catch (searchErr) {
+                    output.textContent += 'Search error: ' + searchErr.message + '\n';
+                }
+            }
+        };
+    </script>
+</body>
+</html>

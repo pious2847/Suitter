@@ -6,6 +6,7 @@ import {
   Trash2,
   LogOut,
   Wallet,
+  DollarSign,
 } from "lucide-react";
 import { MinimalHeader } from "../../components/minimal-header";
 import { AppSidebar } from "../../components/app-sidebar";
@@ -15,6 +16,7 @@ import { useTheme } from "../../components/theme-provider";
 import { useEffect, useState } from "react";
 import { useCurrentAccount, useDisconnectWallet } from "@mysten/dapp-kit";
 import { useProfile } from "../../hooks/useProfile";
+import { useTipping } from "../../hooks/useTipping";
 
 interface SettingItem {
   id: string;
@@ -25,6 +27,11 @@ interface SettingItem {
 }
 
 function SettingsContent() {
+  const currentAccount = useCurrentAccount();
+  const { mutate: disconnect } = useDisconnectWallet();
+  const address = currentAccount?.address;
+  const { theme, toggleTheme } = useTheme();
+  
   const {
     fetchMyProfile,
     createProfile,
@@ -32,10 +39,19 @@ function SettingsContent() {
     error: profileError,
     isLoading: profileLoading,
   } = useProfile();
+  const { initializeMyTipBalance, getTipBalanceInfo } = useTipping();
+  
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [pfpUrl, setPfpUrl] = useState("");
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [tipBalanceInitialized, setTipBalanceInitialized] = useState(false);
+  const [isInitializingTipBalance, setIsInitializingTipBalance] = useState(false);
+  const [tipBalanceInfo, setTipBalanceInfo] = useState<any>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showChangeWallet, setShowChangeWallet] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -44,16 +60,39 @@ function SettingsContent() {
         setProfileId((prof as any).data?.objectId);
         // If the Move object fields are accessible, try to prefill from them (optional, keep blank if not resolvable)
       }
+      
+      // Check if tip balance is initialized
+      if (address) {
+        const tipInfo = await getTipBalanceInfo(address);
+        setTipBalanceInfo(tipInfo);
+        setTipBalanceInitialized(!!tipInfo.balanceId);
+      }
     })();
-  }, [fetchMyProfile]);
-  const currentAccount = useCurrentAccount();
-  const { mutate: disconnect } = useDisconnectWallet();
-  const address = currentAccount?.address;
-  const { theme, toggleTheme } = useTheme();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showChangeWallet, setShowChangeWallet] = useState(false);
+  }, [fetchMyProfile, address, getTipBalanceInfo]);
+
+  const handleInitializeTipBalance = async () => {
+    setIsInitializingTipBalance(true);
+    try {
+      const result = await initializeMyTipBalance();
+      if (result) {
+        setTipBalanceInitialized(true);
+        alert(result.alreadyExists 
+          ? "Tip balance already initialized!" 
+          : "Tip balance initialized successfully! You can now receive tips.");
+        
+        // Refresh tip balance info
+        if (address) {
+          const tipInfo = await getTipBalanceInfo(address);
+          setTipBalanceInfo(tipInfo);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to initialize tip balance:", error);
+      alert("Failed to initialize tip balance. Please try again.");
+    } finally {
+      setIsInitializingTipBalance(false);
+    }
+  };
 
   const handleLogout = () => {
     disconnect();
@@ -269,6 +308,50 @@ function SettingsContent() {
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* Tip Balance Initialization */}
+                  <div className="p-3 rounded-lg bg-muted/30 border border-border space-y-3">
+                    <div className="flex items-center gap-2">
+                      <DollarSign size={18} className="text-green-600 dark:text-green-400" />
+                      <div className="text-sm font-semibold text-foreground">
+                        Tipping Account
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {tipBalanceInitialized 
+                        ? "Your tipping account is active. You can receive tips from other users."
+                        : "Initialize your tipping account to receive tips on your posts."}
+                    </div>
+                    {tipBalanceInfo && tipBalanceInfo.balanceId && (
+                      <div className="text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Available Balance:</span>
+                          <span className="font-semibold text-green-600 dark:text-green-400">
+                            {tipBalanceInfo.balance.toFixed(4)} SUI
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Received:</span>
+                          <span className="font-semibold">{tipBalanceInfo.totalReceived.toFixed(4)} SUI</span>
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      disabled={isInitializingTipBalance || tipBalanceInitialized}
+                      onClick={handleInitializeTipBalance}
+                      className={`w-full px-3 py-2 rounded-md font-semibold transition-opacity ${
+                        tipBalanceInitialized
+                          ? "bg-green-600/20 text-green-600 dark:text-green-400 cursor-not-allowed"
+                          : "bg-green-600 text-white hover:opacity-90"
+                      }`}
+                    >
+                      {isInitializingTipBalance 
+                        ? "Initializing..." 
+                        : tipBalanceInitialized 
+                        ? "✓ Tipping Enabled" 
+                        : "Enable Tipping"}
+                    </button>
                   </div>
 
                   {accountSettings.map((setting) => (

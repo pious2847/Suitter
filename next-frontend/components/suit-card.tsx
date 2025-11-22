@@ -3,14 +3,16 @@ import {
   Heart,
   MessageCircle,
   Repeat2,
-  Bookmark,
   Share,
   MoreHorizontal,
+  DollarSign,
 } from "lucide-react";
 import { formatTime } from "@/lib/utils";
 import { OwnershipHistoryModal } from "./ownership-history-modal";
 import { BidModal } from "./bid-modal";
+import { TipModal } from "./tip-modal";
 import { Link } from "react-router-dom";
+import { toast } from "../hooks/use-toast";
 
 interface SuitCardProps {
   id: string;
@@ -29,6 +31,7 @@ interface SuitCardProps {
   nftValue?: number;
   currentBid?: number;
   isEncrypted?: boolean;
+  tipTotal?: number;
   media?: {
     type: "image" | "video";
     url: string;
@@ -38,8 +41,7 @@ interface SuitCardProps {
   onReply?: (id: string) => void;
   onViewComments?: (id: string) => void;
   onShare?: (id: string) => void;
-  onBookmark: (id: string, isBookmarked: boolean) => void;
-  bookmarked?: boolean;
+  onTip?: (id: string, amount: number) => Promise<void>;
 }
 
 export function SuitCard({
@@ -59,18 +61,30 @@ export function SuitCard({
   nftValue = 0.5,
   currentBid = 0.75,
   isEncrypted = false,
+  tipTotal = 0,
   media,
   onLike,
   onRepost,
   onReply,
   onViewComments,
   onShare,
-  onBookmark,
-  bookmarked = false,
+  onTip,
 }: SuitCardProps) {
   const [showBidMenu, setShowBidMenu] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showBidModal, setShowBidModal] = useState(false);
+  const [showTipModal, setShowTipModal] = useState(false);
+  const [isTipping, setIsTipping] = useState(false);
+
+  const handleTip = async (amount: number) => {
+    if (!onTip) return;
+    setIsTipping(true);
+    try {
+      await onTip(id, amount);
+    } finally {
+      setIsTipping(false);
+    }
+  };
 
   const ownershipHistory = [
     {
@@ -231,6 +245,7 @@ export function SuitCard({
 
           {/* Action Buttons with Icons and Counts */}
           <div className="mt-3 flex justify-between text-muted-foreground max-w-md">
+            {/* Comment Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -240,62 +255,98 @@ export function SuitCard({
                   onReply?.(id);
                 }
               }}
-              className="flex items-center gap-2 p-2 rounded-full hover:bg-muted transition-colors group/btn"
-              title="View comments"
+              className="flex items-center gap-2 p-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/20 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group/btn"
+              title="Reply"
+              aria-label="Reply to post"
             >
-              <MessageCircle size={16} />
-              <span className="text-xs">{replies}</span>
+              <MessageCircle size={18} />
+              {replies > 0 && <span className="text-xs">{replies}</span>}
             </button>
+
+            {/* Repost Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onRepost?.(id);
+                if (onRepost) {
+                  onRepost(id);
+                  if (!reposted) {
+                    toast({
+                      title: "Reposted!",
+                      description: "Post has been reposted to your profile",
+                      variant: "success",
+                    });
+                  }
+                }
               }}
-              className="flex items-center gap-2 p-2 rounded-full hover:bg-muted transition-colors group/btn"
+              className={`flex items-center gap-2 p-2 rounded-full transition-colors group/btn ${
+                reposted
+                  ? "text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/20"
+                  : "hover:bg-green-50 dark:hover:bg-green-950/20 hover:text-green-600 dark:hover:text-green-400"
+              }`}
+              title={reposted ? "Unrepost" : "Repost"}
+              aria-label={reposted ? "Unrepost" : "Repost"}
             >
-              <Repeat2
-                size={16}
-                color={reposted ? "#000" : "currentColor"}
-                className={reposted ? "text-green-600 dark:text-green-400" : ""}
-              />
-              <span className="text-xs">{reposts}</span>
+              <Repeat2 size={18} />
+              {reposts > 0 && <span className="text-xs">{reposts}</span>}
             </button>
+
+            {/* Like Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onLike(id);
               }}
-              className="flex items-center gap-2 p-2 rounded-full hover:bg-muted transition-colors group/btn"
+              className={`flex items-center gap-2 p-2 rounded-full transition-colors group/btn ${
+                liked
+                  ? "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20"
+                  : "hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-600 dark:hover:text-red-400"
+              }`}
+              title={liked ? "Unlike" : "Like"}
+              aria-label={liked ? "Unlike" : "Like"}
             >
-              <Heart
-                size={16}
-                fill={liked ? "currentColor" : "none"}
-                color={liked ? "#000" : "currentColor"}
-              />
-              <span className="text-xs">{likes}</span>
+              <Heart size={18} fill={liked ? "currentColor" : "none"} />
+              {likes > 0 && <span className="text-xs">{likes}</span>}
             </button>
+
+            {/* Tip Button */}
+            {onTip && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTipModal(true);
+                }}
+                className="flex items-center gap-2 p-2 rounded-full hover:bg-green-50 dark:hover:bg-green-950/20 hover:text-green-600 dark:hover:text-green-400 transition-colors group/btn"
+                title="Send tip"
+                aria-label="Send tip"
+              >
+                <DollarSign size={18} />
+                {tipTotal > 0 && (
+                  <span className="text-xs font-semibold">{tipTotal.toFixed(2)}</span>
+                )}
+              </button>
+            )}
+
+            {/* Share Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onBookmark(id, !bookmarked);
+                if (onShare) {
+                  onShare(id);
+                } else {
+                  // Copy link to clipboard
+                  navigator.clipboard.writeText(window.location.origin + `/post/${id}`);
+                  toast({
+                    title: "Link Copied!",
+                    description: "Post link copied to clipboard",
+                    variant: "success",
+                  });
+                }
               }}
-              className="flex items-center gap-2 p-2 rounded-full hover:bg-muted transition-colors group/btn"
+              className="flex items-center gap-2 p-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/20 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group/btn"
+              title="Share"
+              aria-label="Share post"
             >
-              <Bookmark
-                size={16}
-                fill={bookmarked ? "currentColor" : "none"}
-                color={bookmarked ? "#000" : "currentColor"}
-              />
-              <span className="text-xs">{bookmarked ? "1" : "0"}</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onShare?.(id);
-              }}
-              className="flex items-center gap-2 p-2 rounded-full hover:bg-muted transition-colors group/btn"
-            >
-              <Share size={16} />
+              <Share size={18} />
             </button>
           </div>
         </div>
@@ -317,6 +368,14 @@ export function SuitCard({
         currentValue={nftValue || 0.5}
         currentBid={currentBid || 0.75}
         onPlaceBid={handlePlaceBid}
+      />
+
+      <TipModal
+        isOpen={showTipModal}
+        onClose={() => setShowTipModal(false)}
+        onTip={handleTip}
+        recipientName={author}
+        isLoading={isTipping}
       />
     </>
   );

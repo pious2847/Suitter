@@ -101,7 +101,14 @@ function ProfileContent() {
             isEncrypted: false,
             media:
               fields?.media_urls?.length > 0
-                ? { type: "image" as const, url: fields.media_urls[0] }
+                ? {
+                    type: (fields?.content_type === 'video' || 
+                           fields.media_urls[0].toLowerCase().includes('.mp4') ||
+                           fields.media_urls[0].toLowerCase().includes('.webm') ||
+                           fields.media_urls[0].toLowerCase().includes('video')
+                          ) ? "video" as const : "image" as const,
+                    url: fields.media_urls[0]
+                  }
                 : undefined,
           };
         });

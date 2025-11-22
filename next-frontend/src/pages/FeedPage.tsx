@@ -24,7 +24,12 @@ export default function FeedPage() {
 
           {/* Vertical Feed */}
           <main className="flex-1 overflow-hidden bg-black">
-            <FeedVertical />
+            <FeedVertical 
+              videos={[]}
+              bookmarks={new Set()}
+              onLike={() => {}}
+              onBookmark={() => {}}
+            />
           </main>
 
           <TrendingSidebar />

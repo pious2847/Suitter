@@ -21,6 +21,7 @@ export interface SearchResult {
   commentCount?: number;
   retweetCount?: number;
   mediaUrls?: string[];
+  contentType?: string;
 }
 
 export function useSearch() {
@@ -140,6 +141,7 @@ export function useSearch() {
               const commentCount = parseInt(fields.comment_count) || 0;
               const retweetCount = parseInt(fields.retweet_count) || 0;
               const mediaUrls = fields.media_urls || [];
+              const contentType = fields.content_type || 'text';
 
               // Check if content or creator matches the search query
               const queryLower = query.toLowerCase();
@@ -157,6 +159,7 @@ export function useSearch() {
                   commentCount,
                   retweetCount,
                   mediaUrls,
+                  contentType,
                 });
               }
             }

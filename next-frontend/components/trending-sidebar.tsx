@@ -1,48 +1,89 @@
+import { useState, useEffect } from 'react'
+import { TrendingUp, Flame, Users, DollarSign } from 'lucide-react'
+import { useSuiClient } from '@mysten/dapp-kit'
+import CONFIG from '../config'
 
-
-import { TrendingUp } from 'lucide-react'
-
-interface Trend {
+interface TopPost {
   id: string
-  category: string
-  title: string
-  posts: number
+  content: string
+  tipTotal: number
+  creator: string
 }
 
-const TRENDING_TOPICS: Trend[] = [
-  {
-    id: '1',
-    category: 'Technology',
-    title: 'Blockchain Innovation',
-    posts: 234500,
-  },
-  {
-    id: '2',
-    category: 'Web3',
-    title: 'Decentralized Apps',
-    posts: 189200,
-  },
-  {
-    id: '3',
-    category: 'Development',
-    title: 'React 18 Updates',
-    posts: 156800,
-  },
-  {
-    id: '4',
-    category: 'Cryptocurrency',
-    title: 'Sui Ecosystem',
-    posts: 145300,
-  },
-  {
-    id: '5',
-    category: 'AI',
-    title: 'Machine Learning Trends',
-    posts: 123400,
-  },
-]
-
 export function TrendingSidebar() {
+  const suiClient = useSuiClient()
+  const [topTippedPosts, setTopTippedPosts] = useState<TopPost[]>([])
+  const [totalPosts, setTotalPosts] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    fetchTrendingData()
+  }, [])
+
+  const fetchTrendingData = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Get the SuitRegistry to fetch suit IDs
+      const registry = await suiClient.getObject({
+        id: CONFIG.SUIT_REGISTRY,
+        options: { showContent: true },
+      })
+
+      const registryContent = registry.data?.content as any
+      const suitIds = registryContent?.fields?.suit_ids || []
+      setTotalPosts(suitIds.length)
+
+      // Get recent suits (last 50 for analysis)
+      const recentSuitIds = suitIds.slice(-50).reverse()
+
+      // Fetch all suit objects
+      const suits = await Promise.all(
+        recentSuitIds.map(async (id: string) => {
+          try {
+            const suit = await suiClient.getObject({
+              id,
+              options: { showContent: true },
+            })
+            return suit.data
+          } catch (e) {
+            return null
+          }
+        })
+      )
+
+      // Filter and sort by tip total
+      const validSuits = suits
+        .filter(Boolean)
+        .map((suit: any) => {
+          const fields = suit?.content?.fields
+          return {
+            id: suit.objectId,
+            content: fields?.content || '',
+            tipTotal: Number(fields?.tip_total || 0) / 1_000_000_000, // Convert MIST to SUI
+            creator: fields?.creator || '',
+          }
+        })
+        .filter((suit) => suit.tipTotal > 0)
+        .sort((a, b) => b.tipTotal - a.tipTotal)
+        .slice(0, 5)
+
+      setTopTippedPosts(validSuits)
+    } catch (error) {
+      console.error('Failed to fetch trending data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const truncateContent = (content: string, maxLength: number = 60) => {
+    if (content.length <= maxLength) return content
+    return content.slice(0, maxLength) + '...'
+  }
+
+  const truncateAddress = (address: string) => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  }
   return (
     <aside className="hidden lg:block w-80 border-l border-border bg-background md:flex flex-col h-screen">
       {/* Search Bar */}
@@ -59,32 +100,89 @@ export function TrendingSidebar() {
         </div>
       </div>
 
-      {/* Trending Section */}
-      <div className="flex-1 overflow-y-auto border-b border-border">
+      {/* Stats Section */}
+      <div className="p-4 border-b border-border">
+        <div className="flex items-center gap-2 mb-3">
+          <TrendingUp size={18} className="text-foreground" />
+          <h2 className="text-lg font-semibold text-foreground">Platform Stats</h2>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Users size={14} />
+              <span className="text-xs font-medium">Total Posts</span>
+            </div>
+            <div className="text-xl font-bold text-foreground">
+              {isLoading ? '...' : totalPosts.toLocaleString()}
+            </div>
+          </div>
+          
+          <div className="bg-muted/50 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Flame size={14} />
+              <span className="text-xs font-medium">Hot Posts</span>
+            </div>
+            <div className="text-xl font-bold text-foreground">
+              {isLoading ? '...' : topTippedPosts.length}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Tipped Posts Section */}
+      <div className="flex-1 overflow-y-auto">
         <div className="p-4">
           <div className="flex items-center gap-2 mb-4">
-            <TrendingUp size={18} className="text-foreground" />
-            <h2 className="text-lg font-semibold text-foreground">What's Trending</h2>
+            <DollarSign size={18} className="text-green-500" />
+            <h2 className="text-lg font-semibold text-foreground">Top Tipped Posts</h2>
           </div>
 
-          <div className="space-y-3">
-            {TRENDING_TOPICS.map((trend) => (
-              <button
-                key={trend.id}
-                className="w-full text-left p-3 rounded-lg hover:bg-muted/50 transition-colors group"
-              >
-                <div className="text-xs text-muted-foreground font-medium mb-1">
-                  {trend.category} · Trending
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-3 rounded-lg bg-muted/30 animate-pulse">
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-1/2"></div>
                 </div>
-                <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                  {trend.title}
+              ))}
+            </div>
+          ) : topTippedPosts.length > 0 ? (
+            <div className="space-y-3">
+              {topTippedPosts.map((post, index) => (
+                <div
+                  key={post.id}
+                  className="p-3 rounded-lg hover:bg-muted/50 transition-colors border border-border/50"
+                >
+                  <div className="flex items-start gap-2 mb-2">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 text-white text-xs font-bold shrink-0">
+                      #{index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground line-clamp-2 mb-1">
+                        {truncateContent(post.content)}
+                      </p>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          by {truncateAddress(post.creator)}
+                        </span>
+                        <span className="font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
+                          <DollarSign size={12} />
+                          {post.tipTotal.toFixed(2)} SUI
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {(trend.posts / 1000).toFixed(0)}K posts
-                </div>
-              </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <Flame size={32} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No tipped posts yet</p>
+              <p className="text-xs mt-1">Be the first to tip a post!</p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -139,6 +139,15 @@ module suits::tipping {
         get_or_create_tip_balance(registry, user_address, ctx)
     }
 
+    /// Create a tip balance for another user (used when tipping someone who hasn't initialized)
+    public fun create_tip_balance_for(
+        registry: &mut TipBalanceRegistry,
+        user_address: address,
+        ctx: &mut TxContext
+    ): ID {
+        get_or_create_tip_balance(registry, user_address, ctx)
+    }
+
 
     #[allow(lint(self_transfer))]
     public fun withdraw_funds(
