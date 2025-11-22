@@ -1,22 +1,13 @@
 import axios from 'axios';
 
 // Working Walrus testnet endpoints - Updated January 2025
-// Multiple publisher endpoints with CORS support
-const WALRUS_PUBLISHERS = [
-  'https://publisher.walrus-testnet.walrus.space',
-  'https://wal-publisher-testnet.staketab.org',
-  'https://walrus-testnet-publisher.nodes.guru',
-  'https://publisher.walrus-01.tududes.com',
-];
-
+// Publisher: Tudor's endpoint with confirmed CORS support
+// Aggregator: Multiple fallback options
+const WALRUS_PUBLISHER_URL = 'https://publisher.walrus-01.tududes.com';
 const WALRUS_AGGREGATOR_URL = 'https://aggregator.walrus-testnet.walrus.space';
 
 // Backup endpoints in case primary fails
 const BACKUP_AGGREGATOR_URL = 'https://wal-aggregator-testnet.staketab.org';
-
-// File size limits (Walrus testnet has ~10MB limit per blob)
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB safe limit
-const MAX_VIDEO_SIZE = 3 * 1024 * 1024; // 3MB for videos (more conservative)
 
 export interface WalrusUploadResponse {
   newlyCreated?: {
@@ -43,101 +34,68 @@ export class WalrusService {
    * @param userAddress The user's Sui address to own the resulting blob object
    */
   static async uploadFile(file: File, userAddress?: string): Promise<WalrusBlob> {
-    // Check file size before upload
-    const isVideo = file.type.startsWith('video/');
-    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_FILE_SIZE;
-    
-    if (file.size > maxSize) {
-      const sizeMB = (maxSize / 1024 / 1024).toFixed(1);
-      throw new Error(
-        `File too large! ${isVideo ? 'Videos' : 'Images'} must be under ${sizeMB}MB. ` +
-        `Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB. Please compress it first.`
+    try {
+      // Convert file to raw binary data
+      const fileData = await file.arrayBuffer();
+      
+      // Construct URL with send_object_to parameter if userAddress is provided
+      let uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=5`;
+      if (userAddress) {
+        uploadUrl += `&send_object_to=${userAddress}`;
+      }
+      
+      const response = await axios.put<WalrusUploadResponse>(
+        uploadUrl,
+        fileData,
+        {
+          headers: {
+            'Content-Type': 'application/octet-stream',
+          },
+          // Add timeout for large files
+          timeout: 60000, // 60 seconds
+        }
       );
-    }
 
-    // Try multiple publishers in order
-    let lastError: Error | null = null;
-    
-    for (let i = 0; i < WALRUS_PUBLISHERS.length; i++) {
-      const publisherUrl = WALRUS_PUBLISHERS[i];
+      // Extract blob ID from response
+      const blobId = response.data.newlyCreated?.blobObject.blobId || 
+                    response.data.alreadyCertified?.blobId;
       
-      try {
-        console.log(`Attempting upload to publisher ${i + 1}/${WALRUS_PUBLISHERS.length}: ${publisherUrl}`);
-        
-        // Convert file to raw binary data
-        const fileData = await file.arrayBuffer();
-        
-        // Construct URL with send_object_to parameter if userAddress is provided
-        let uploadUrl = `${publisherUrl}/v1/store?epochs=5`;
-        if (userAddress) {
-          uploadUrl += `&send_object_to=${userAddress}`;
-        }
-        
-        const response = await axios.put<WalrusUploadResponse>(
-          uploadUrl,
-          fileData,
-          {
-            headers: {
-              'Content-Type': 'application/octet-stream',
-            },
-            timeout: 90000, // 90 seconds for videos
-          }
-        );
+      if (!blobId) {
+        throw new Error('Failed to get blob ID from Walrus response');
+      }
 
-        // Extract blob ID from response
-        const blobId = response.data.newlyCreated?.blobObject.blobId || 
-                      response.data.alreadyCertified?.blobId;
-        
-        if (!blobId) {
-          throw new Error('Failed to get blob ID from Walrus response');
+      return {
+        blobId,
+        walrusUrl: this.getBlobUrl(blobId),
+      };
+    } catch (error) {
+      console.error('Walrus upload failed:', error);
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 413) {
+          throw new Error('File too large for Walrus publisher (HTTP 413). Max ~5 MB. Please compress or choose a smaller file.');
         }
-
-        console.log(`✅ Upload successful to ${publisherUrl}`);
-        
-        return {
-          blobId,
-          walrusUrl: this.getBlobUrl(blobId),
-        };
-      } catch (error) {
-        console.warn(`❌ Upload failed to ${publisherUrl}:`, error);
-        lastError = error as Error;
-        
-        // If this is the last publisher, throw the error
-        if (i === WALRUS_PUBLISHERS.length - 1) {
-          break;
+        // Check for specific error types
+        if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+          throw new Error('Network error: Unable to connect to Walrus. Please check your internet connection and try again.');
+        }
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          throw new Error('Upload timeout: The file is too large or the connection is slow. Please try again.');
+        }
+        if (error.response?.status === 403) {
+          throw new Error('Access denied: CORS or authentication error. Please contact support.');
+        }
+        if (error.response?.status === 404) {
+          throw new Error('Service unavailable: Walrus endpoint not found. The service may be temporarily down.');
+        }
+        if (error.response && error.response.status >= 500) {
+          throw new Error('Server error: Walrus service is experiencing issues. Please try again later.');
         }
         
-        // Otherwise, try the next publisher
-        continue;
+        const message = error.response?.data?.message || error.message;
+        throw new Error(`Failed to upload to Walrus: ${message}`);
       }
+      throw new Error(`Failed to upload to Walrus: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    // All publishers failed, throw detailed error
-    if (axios.isAxiosError(lastError)) {
-      if (lastError.response?.status === 413) {
-        throw new Error(
-          `File too large! Walrus publishers rejected the file (413). ` +
-          `Try compressing your ${isVideo ? 'video' : 'image'} to under ${(maxSize / 1024 / 1024).toFixed(1)}MB.`
-        );
-      }
-      if (lastError.code === 'ERR_NETWORK' || lastError.message === 'Network Error') {
-        throw new Error(
-          'CORS Error: All Walrus publishers are blocking the request. ' +
-          'This might be a temporary issue. Please try again in a few minutes.'
-        );
-      }
-      if (lastError.code === 'ECONNABORTED' || lastError.message.includes('timeout')) {
-        throw new Error(
-          'Upload timeout: The file took too long to upload. ' +
-          'Try compressing it or check your internet connection.'
-        );
-      }
-      
-      const message = lastError.response?.data?.message || lastError.message;
-      throw new Error(`All Walrus publishers failed: ${message}`);
-    }
-    
-    throw new Error(`Failed to upload to Walrus: ${lastError?.message || 'Unknown error'}`);
   }
 
   /**
@@ -165,7 +123,7 @@ export class WalrusService {
       });
 
       // Construct URL with send_object_to parameter if userAddress is provided
-      let uploadUrl = `${WALRUS_PUBLISHERS[0]}/v1/store?epochs=5`;
+      let uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=5`;
       if (userAddress) {
         uploadUrl += `&send_object_to=${userAddress}`;
       }
@@ -313,7 +271,7 @@ export class WalrusService {
     
     try {
       // Construct URL with send_object_to parameter if userAddress is provided
-      let uploadUrl = `${WALRUS_PUBLISHERS[0]}/v1/store?epochs=5`;
+      let uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=5`;
       if (userAddress) {
         uploadUrl += `&send_object_to=${userAddress}`;
       }
@@ -465,7 +423,7 @@ export class WalrusService {
    */
   static async checkServiceHealth(): Promise<boolean> {
     try {
-      await axios.head(WALRUS_PUBLISHERS[0], { timeout: 5000 });
+      await axios.head(WALRUS_PUBLISHER_URL, { timeout: 5000 });
       return true;
     } catch {
       return false;
