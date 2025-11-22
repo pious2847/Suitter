@@ -161,8 +161,19 @@ export function ComposeModal({ isOpen, onClose }: ComposeModalProps) {
         }
       }
 
-      // Post suit with media URLs
-      await postSuit(content, mediaUrls);
+      // Determine content type based on selected file
+      let contentType: 'text' | 'image' | 'video' = 'text';
+      if (selectedFiles.length > 0) {
+        const fileType = selectedFiles[0].type;
+        if (fileType.startsWith('image/')) {
+          contentType = 'image';
+        } else if (fileType.startsWith('video/')) {
+          contentType = 'video';
+        }
+      }
+
+      // Post suit with media URLs and content type
+      await postSuit(content, mediaUrls, contentType);
 
       // Cleanup
       previewUrls.forEach((url) => URL.revokeObjectURL(url));

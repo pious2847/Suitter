@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
+import { useCurrentAccount } from "@mysten/dapp-kit";
 
 interface NewChatModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export function NewChatModal({
   onStartChat,
   isLoading,
 }: NewChatModalProps) {
+  const currentAccount = useCurrentAccount();
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
 
@@ -31,6 +33,12 @@ export function NewChatModal({
 
     if (address.length < 64) {
       setError("Invalid Sui address format");
+      return;
+    }
+
+    // Check if trying to message self
+    if (currentAccount && address.toLowerCase() === currentAccount.address.toLowerCase()) {
+      setError("You cannot start a chat with yourself");
       return;
     }
 

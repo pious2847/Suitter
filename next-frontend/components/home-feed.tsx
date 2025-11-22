@@ -244,6 +244,25 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
           }
         }
 
+        // Determine media type from content_type field or URL
+        let mediaType: "image" | "video" | undefined = undefined;
+        if (fields.media_urls?.length > 0) {
+          const contentType = fields.content_type || 'text';
+          if (contentType === 'video') {
+            mediaType = 'video';
+          } else if (contentType === 'image') {
+            mediaType = 'image';
+          } else {
+            // Fallback: detect from URL extension
+            const url = fields.media_urls[0].toLowerCase();
+            if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('video')) {
+              mediaType = 'video';
+            } else {
+              mediaType = 'image';
+            }
+          }
+        }
+
         return {
           id: suit.objectId,
           author: displayName,
@@ -262,9 +281,9 @@ export function HomeFeed({ onCompose }: HomeFeedProps) {
           currentBid: 0,
           isEncrypted: false,
           media:
-            fields.media_urls?.length > 0
+            fields.media_urls?.length > 0 && mediaType
               ? {
-                  type: "image" as const,
+                  type: mediaType,
                   url: fields.media_urls[0],
                 }
               : undefined,

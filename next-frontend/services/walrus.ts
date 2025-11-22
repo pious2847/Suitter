@@ -1,9 +1,10 @@
 import axios from 'axios';
 
 // Working Walrus testnet endpoints - Updated January 2025
-// Publisher: Tudor's endpoint with confirmed CORS support
+// Publisher: Using Tudor's endpoint that works with /v1/blobs
 // Aggregator: Multiple fallback options
 const WALRUS_PUBLISHER_URL = 'https://publisher.walrus-01.tududes.com';
+const BACKUP_PUBLISHER_URL = 'https://walrus-testnet-publisher.nodes.guru';
 const WALRUS_AGGREGATOR_URL = 'https://aggregator.walrus-testnet.walrus.space';
 
 // Backup endpoints in case primary fails
@@ -34,68 +35,90 @@ export class WalrusService {
    * @param userAddress The user's Sui address to own the resulting blob object
    */
   static async uploadFile(file: File, userAddress?: string): Promise<WalrusBlob> {
-    try {
-      // Convert file to raw binary data
-      const fileData = await file.arrayBuffer();
-      
-      // Construct URL with send_object_to parameter if userAddress is provided
-      let uploadUrl = `${WALRUS_PUBLISHER_URL}/v1/blobs?epochs=5`;
-      if (userAddress) {
-        uploadUrl += `&send_object_to=${userAddress}`;
-      }
-      
-      const response = await axios.put<WalrusUploadResponse>(
-        uploadUrl,
-        fileData,
-        {
-          headers: {
-            'Content-Type': 'application/octet-stream',
-          },
-          // Add timeout for large files
-          timeout: 60000, // 60 seconds
-        }
-      );
-
-      // Extract blob ID from response
-      const blobId = response.data.newlyCreated?.blobObject.blobId || 
-                    response.data.alreadyCertified?.blobId;
-      
-      if (!blobId) {
-        throw new Error('Failed to get blob ID from Walrus response');
-      }
-
-      return {
-        blobId,
-        walrusUrl: this.getBlobUrl(blobId),
-      };
-    } catch (error) {
-      console.error('Walrus upload failed:', error);
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 413) {
-          throw new Error('File too large for Walrus publisher (HTTP 413). Max ~5 MB. Please compress or choose a smaller file.');
-        }
-        // Check for specific error types
-        if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
-          throw new Error('Network error: Unable to connect to Walrus. Please check your internet connection and try again.');
-        }
-        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-          throw new Error('Upload timeout: The file is too large or the connection is slow. Please try again.');
-        }
-        if (error.response?.status === 403) {
-          throw new Error('Access denied: CORS or authentication error. Please contact support.');
-        }
-        if (error.response?.status === 404) {
-          throw new Error('Service unavailable: Walrus endpoint not found. The service may be temporarily down.');
-        }
-        if (error.response && error.response.status >= 500) {
-          throw new Error('Server error: Walrus service is experiencing issues. Please try again later.');
+    // Convert file to raw binary data
+    const fileData = await file.arrayBuffer();
+    
+    // Try multiple publishers in order
+    const publishers = [WALRUS_PUBLISHER_URL, BACKUP_PUBLISHER_URL];
+    let lastError: any = null;
+    
+    for (const publisherUrl of publishers) {
+      try {
+        // Construct URL with send_object_to parameter if userAddress is provided
+        // Use /v1/blobs for Tudor's endpoint, /v1/store for others
+        const endpoint = publisherUrl.includes('tududes') ? '/v1/blobs' : '/v1/store';
+        let uploadUrl = `${publisherUrl}${endpoint}?epochs=5`;
+        if (userAddress) {
+          uploadUrl += `&send_object_to=${userAddress}`;
         }
         
-        const message = error.response?.data?.message || error.message;
-        throw new Error(`Failed to upload to Walrus: ${message}`);
+        const response = await axios.put<WalrusUploadResponse>(
+          uploadUrl,
+          fileData,
+          {
+            headers: {
+              'Content-Type': 'application/octet-stream',
+            },
+            // Add timeout for large files
+            timeout: 60000, // 60 seconds (matching your working code)
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+          }
+        );
+
+        // Extract blob ID from response
+        const blobId = response.data.newlyCreated?.blobObject.blobId || 
+                      response.data.alreadyCertified?.blobId;
+        
+        if (!blobId) {
+          throw new Error('Failed to get blob ID from Walrus response');
+        }
+
+        return {
+          blobId,
+          walrusUrl: this.getBlobUrl(blobId),
+        };
+      } catch (error) {
+        console.error(`Walrus upload failed on ${publisherUrl}:`, error);
+        lastError = error;
+        
+        // If it's a 413 or CORS error, try next publisher
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 413 || error.code === 'ERR_NETWORK') {
+            continue; // Try next publisher
+          }
+        }
+        // For other errors, throw immediately
+        break;
       }
-      throw new Error(`Failed to upload to Walrus: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+    
+    // All publishers failed, throw the last error
+    if (axios.isAxiosError(lastError)) {
+      if (lastError.response?.status === 413) {
+        throw new Error('File too large for Walrus. Maximum size is ~1MB for videos. Please compress your file or choose a smaller one.');
+      }
+      // Check for specific error types
+      if (lastError.code === 'ERR_NETWORK' || lastError.message === 'Network Error') {
+        throw new Error('Network error: Unable to connect to Walrus publishers. This may be a CORS issue. Try using a smaller file or different format.');
+      }
+      if (lastError.code === 'ECONNABORTED' || lastError.message.includes('timeout')) {
+        throw new Error('Upload timeout: The file is too large or the connection is slow. Please try a smaller file.');
+      }
+      if (lastError.response?.status === 403) {
+        throw new Error('Access denied: CORS or authentication error. Please contact support.');
+      }
+      if (lastError.response?.status === 404) {
+        throw new Error('Service unavailable: Walrus endpoint not found. The service may be temporarily down.');
+      }
+      if (lastError.response && lastError.response.status >= 500) {
+        throw new Error('Server error: Walrus service is experiencing issues. Please try again later.');
+      }
+      
+      const message = lastError.response?.data?.message || lastError.message;
+      throw new Error(`Failed to upload to Walrus: ${message}`);
+    }
+    throw new Error(`Failed to upload to Walrus: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`);
   }
 
   /**
