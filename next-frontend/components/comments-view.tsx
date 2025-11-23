@@ -117,9 +117,12 @@ export function CommentsView({
           </div>
 
           {/* Original Suit */}
-          <div className="px-4 py-3 border-b border-border bg-muted/30">
+          <div className="px-4 py-4 border-b-2 border-border bg-muted/50">
+            <div className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Original Post
+            </div>
             <div className="flex gap-3">
-              <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
+              <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center text-sm font-bold shrink-0 overflow-hidden">
                 {suitAvatar && suitAvatar.startsWith("http") ? (
                   <img
                     src={suitAvatar}
@@ -130,27 +133,36 @@ export function CommentsView({
                   <span>{suitAvatar || suitAuthor.slice(0, 2).toUpperCase()}</span>
                 )}
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">{suitAuthor}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-foreground">{suitAuthor}</span>
                   <span className="text-muted-foreground text-sm">
                     @{suitHandle}
                   </span>
                 </div>
-                <p className="text-foreground mt-1">{suitContent}</p>
+                <p className="text-foreground mt-2 text-base leading-relaxed break-words">
+                  {suitContent}
+                </p>
               </div>
             </div>
           </div>
 
           {/* Comments List */}
           <div className="flex-1 overflow-y-auto px-4 py-3">
+            {!isLoading && comments.length > 0 && (
+              <div className="mb-3 pb-2 border-b border-border">
+                <h3 className="text-sm font-semibold text-muted-foreground">
+                  {comments.length} {comments.length === 1 ? 'Comment' : 'Comments'}
+                </h3>
+              </div>
+            )}
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
             ) : comments.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p>No comments yet</p>
+                <p className="text-lg">No comments yet</p>
                 <p className="text-sm mt-1">Be the first to comment!</p>
               </div>
             ) : (
