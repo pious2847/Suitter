@@ -187,7 +187,7 @@ export function useInteractions() {
       try {
         const pkg = await getPackageIdFromSuit(suitId);
         
-        // Query for Comment events
+        // Query for Comment events to get comment IDs
         const events = await suiClient.queryEvents({
           query: {
             MoveEventType: `${pkg}::interactions::CommentCreated`,
@@ -195,22 +195,44 @@ export function useInteractions() {
           limit: 100,
         });
 
-        // Filter comments for this specific suit
-        const comments = events.data
+        // Filter events for this specific suit and fetch actual Comment objects
+        const commentPromises = events.data
           .filter((event: any) => {
             const parsedJson = event.parsedJson;
             return parsedJson?.suit_id === suitId;
           })
-          .map((event: any) => {
+          .map(async (event: any) => {
             const parsedJson = event.parsedJson;
-            return {
-              id: event.id.txDigest,
-              suitId: parsedJson.suit_id,
-              commenter: parsedJson.commenter,
-              content: parsedJson.content,
-              timestamp: parseInt(parsedJson.timestamp) || Date.now(),
-            };
-          })
+            const commentId = parsedJson.comment_id;
+            
+            try {
+              // Fetch the actual Comment object to get the content
+              const commentObj = await suiClient.getObject({
+                id: commentId,
+                options: { showContent: true },
+              });
+
+              const content = commentObj.data?.content as any;
+              const fields = content?.fields;
+
+              if (fields) {
+                return {
+                  id: commentId,
+                  suitId: parsedJson.suit_id,
+                  commenter: parsedJson.commenter,
+                  content: fields.content || "",
+                  timestamp: parseInt(parsedJson.timestamp) || Date.now(),
+                };
+              }
+            } catch (err) {
+              console.error(`Failed to fetch comment ${commentId}:`, err);
+            }
+            
+            return null;
+          });
+
+        const comments = (await Promise.all(commentPromises))
+          .filter((c): c is NonNullable<typeof c> => c !== null)
           .sort((a, b) => b.timestamp - a.timestamp); // Most recent first
 
         return comments;
